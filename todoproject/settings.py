@@ -24,9 +24,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-nb$!e*2dl=3*%102qsgjq9%4=wtwl@=%5hl8f3_=gq=@ox$46u'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ["https://bale231.pythonanywhere.com/"]
 
 
 # Application definition
@@ -58,11 +58,13 @@ CORS_ALLOW_CREDENTIALS = True
 # Sicurezza CSRF
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:5173",
+    "https://todowebapp-frontend-reactts-stml.vercel.app",
 ]
 
 # Cross Origin JS fetch
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
+    "https://todowebapp-frontend-reactts-stml.vercel.app"
 ]
 
 
