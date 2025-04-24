@@ -1,34 +1,70 @@
 from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import send_mail
-from django.utils.http import urlsafe_base64_encode
+from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes
 from django.contrib.auth.models import User
 import json
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.contrib.auth import authenticate, login as auth_login
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth import authenticate
 from django.contrib.auth.hashers import make_password
-from .models import Todo, Category
-from django.utils.http import urlsafe_base64_decode
-from django.core.signing import Signer
+from django.shortcuts import get_object_or_404
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from datetime import datetime
-from django.shortcuts import get_object_or_404
+from rest_framework.views import APIView
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from .models import Todo, Category
 from django.db.models.functions import Lower
 
-signer = Signer()
+## Function for unauthorized
+def unauthorized(request):
+    return JsonResponse({'message': 'Unauthorized'}, status=401)
 
-## VIEW GET CURRENT USER
+## VIEW MOBILE LOGIN
+@method_decorator(csrf_exempt, name='dispatch')
+class MobileLoginView(View):
+    def post(self, request):
+        username = request.POST.get("username")
+        password = request.POST.get("password")
+
+        if not username or not password:
+            return HttpResponse("Dati non validi", status=400)
+
+        user = authenticate(request, username=username, password=password)
+        if user is not None:
+            refresh = RefreshToken.for_user(user)
+            return JsonResponse({
+                "message": "login ok",
+                "access": str(refresh.access_token),
+                "refresh": str(refresh),
+            })
+        return HttpResponse("Credenziali errate o utente non trovato", status=401)
+
+## VIEW CURRENT USER JWT
+class JWTCurrentUserView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        return Response({
+            "username": user.username,
+            "email": user.email,
+            "id": user.id,
+        })
+
+## VIEW CURRENT USER
 class CurrentUserView(LoginRequiredMixin, View):
     def get(self, request):
         user = request.user
         profile = getattr(user, 'profile', None)
-
         return JsonResponse({
             'username': user.username,
             'email': user.email,
@@ -38,6 +74,143 @@ class CurrentUserView(LoginRequiredMixin, View):
             'profile_picture': profile.profile_picture.url if profile and profile.profile_picture else None,
             'email_verified': profile.email_verified if profile else False
         })
+
+## VIEW LOGIN
+class LoginView(APIView):
+    def post(self, request):
+        data = request.data
+        username = data.get("username")
+        password = data.get("password")
+
+        user = authenticate(username=username, password=password)
+        if user is None:
+            return Response({"message": "Invalid credentials"}, status=401)
+
+        if not user.is_active:
+            uid = urlsafe_base64_encode(force_bytes(user.pk))
+            token = default_token_generator.make_token(user)
+            verify_url = f"https://todowebapp-frontend-reactts-stml.vercel.app/verify-email/{uid}/{token}"
+
+            context = {
+                "title": "Verifica la tua email",
+                "message": "Clicca il pulsante in basso per confermare la tua email.",
+                "action_text": "Conferma email",
+                "action_url": verify_url,
+                "year": datetime.now().year,
+            }
+            html_content = render_to_string("emails/email_verifica.html", context)
+
+            email = EmailMultiAlternatives(
+                subject="Verifica la tua email",
+                body="Clicca sul link per verificare la tua email.",
+                from_email="todoprovider@webdesign-vito-luigi.it",
+                to=[user.email],
+            )
+            email.attach_alternative(html_content, "text/html")
+            email.send()
+
+            return Response({"message": "email not verified"}, status=403)
+
+        refresh = RefreshToken.for_user(user)
+        return Response({
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+            "user": {
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+            }
+        })
+
+## VIEW LOGOUT
+class LogoutView(View):
+    def post(self, request):
+        from django.contrib.auth import logout
+        logout(request)
+        return JsonResponse({'message': 'logout success'})
+
+# VIEW REGISTER
+@method_decorator(csrf_exempt, name='dispatch')
+class RegisterView(View):
+    def post(self, request):
+        data = json.loads(request.body)
+        username = data.get("username")
+        email = data.get("email")
+        password = data.get("password")
+
+        if not username or not email or not password:
+            return JsonResponse({"error": "Missing fields"}, status=400)
+
+        if User.objects.filter(username=username).exists():
+            return JsonResponse({"error": "Username già esistente"}, status=400)
+
+        if User.objects.filter(email=email).exists():
+            return JsonResponse({"error": "Email già registrata"}, status=400)
+
+        user = User.objects.create(
+            username=username,
+            email=email,
+            password=make_password(password),
+            is_active=False
+        )
+        return JsonResponse({"message": "register success"})
+
+## VIEW DELETE ACCOUNT
+@method_decorator(csrf_exempt, name="dispatch")
+@method_decorator(login_required, name="dispatch")
+class DeleteAccountView(View):
+    def delete(self, request):
+        user = request.user
+        user.delete()
+        return JsonResponse({"message": "Account disattivato"})
+
+## VIEW SEND EMAIL VERIFICATION
+@method_decorator(csrf_exempt, name='dispatch')
+class SendEmailVerificationView(View):
+    def post(self, request):
+        user = request.user
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        token = default_token_generator.make_token(user)
+
+        verify_url = f"https://todowebapp-frontend-reactts-stml.vercel.app/verify-email/{uid}/{token}"
+
+        context = {
+            "title": "Verifica la tua email",
+            "message": "Clicca il pulsante in basso per confermare la tua email.",
+            "action_text": "Conferma email",
+            "action_url": verify_url,
+            "year": datetime.datetime.now().year,
+        }
+
+        html_content = render_to_string("emails/email_template.html", context)
+
+        send_mail(
+            subject="Verifica la tua email",
+            message="Clicca sul link per verificare la tua email.",
+            from_email='"ToDoWebApp Bale" <todoprovider@webdesign-vito-luigi.it>',
+            recipient_list=[user.email],
+            html_message=html_content,
+        )
+        return JsonResponse({"message": "Verification email sent"})
+
+## VIEW CONFIRM EMAIL
+class ConfirmEmailView(View):
+    def get(self, request, uidb64, token):
+        try:
+            uid_decoded = urlsafe_base64_decode(uidb64).decode()
+            user = User.objects.get(pk=uid_decoded)
+        except (User.DoesNotExist, ValueError, TypeError):
+            return JsonResponse({"verified": False}, status=400)
+
+        if user.is_active:
+            return JsonResponse({"verified": True})
+
+        if default_token_generator.check_token(user, token):
+            user.is_active = True
+            user.save()
+            return JsonResponse({"verified": True})
+
+        return JsonResponse({"verified": False}, status=400)
 
 ### VIEW TODOS
 
@@ -112,7 +285,7 @@ class SingleListView(View):
         })
 
 
-## VIEW UPDATE CATEGORY ORDER 
+## VIEW UPDATE CATEGORY ORDER
 @method_decorator(csrf_exempt, name='dispatch')
 class UpdateOrderingView(View):
     def patch(self, request, list_id):
@@ -121,7 +294,7 @@ class UpdateOrderingView(View):
 
         if new_ordering not in ["created", "alphabetical"]:
             return JsonResponse({"error": "Ordinamento non valido"}, status=400)
-        
+
         category = get_object_or_404(Category, pk=list_id)
         category.sort_order = new_ordering
         category.save()
@@ -186,11 +359,11 @@ class ReorderTodoView(View):
         import json
         data = json.loads(request.body)
         order = data.get("order", [])
-        
+
         # Logica per salvare l'ordine (esempio base)
         for index, todo_id in enumerate(order):
             Todo.objects.filter(id=todo_id, category_id=list_id).update(order=index)
-        
+
         return JsonResponse({"message": "Ordine aggiornato"})
 
 ## VIEW DELETE TODO
@@ -281,7 +454,7 @@ class UpdateProfileView(View):
             profile.save()
 
         return JsonResponse({"message": "Profile updated"})
-    
+
 ## VIEW REQUEST PASSWORD RESET
 @method_decorator(csrf_exempt, name='dispatch')
 class SendResetPasswordEmailView(LoginRequiredMixin, View):
@@ -290,7 +463,7 @@ class SendResetPasswordEmailView(LoginRequiredMixin, View):
         uid = urlsafe_base64_encode(force_bytes(user.pk))
         token = default_token_generator.make_token(user)
 
-        frontend_url = f"http://localhost:5173/reset-password/{uid}/{token}"
+        frontend_url = f"https://todowebapp-frontend-reactts-stml.vercel.app/reset-password/{uid}/{token}"
 
         # Dentro la tua view
         subject = "Cambio password"
@@ -320,7 +493,7 @@ class SendResetPasswordEmailView(LoginRequiredMixin, View):
         email.send()
 
         return JsonResponse({"message": "Password reset email sent"})
-    
+
 @method_decorator(csrf_exempt, name='dispatch')
 class ResetPasswordConfirmView(View):
     def post(self, request, uidb64, token):
@@ -339,148 +512,3 @@ class ResetPasswordConfirmView(View):
         user.password = make_password(new_password)
         user.save()
         return JsonResponse({"message": "Password aggiornata con successo"})
-
-## VIEW SEND EMAIL VERIFICATION
-@method_decorator(csrf_exempt, name='dispatch')
-class SendEmailVerificationView(View):
-    def post(self, request):
-        user = request.user
-        uid = urlsafe_base64_encode(force_bytes(user.pk))
-        token = default_token_generator.make_token(user)
-
-        verify_url = f"http://localhost:5173/verify-email/{uid}/{token}"
-
-        context = {
-            "title": "Verifica la tua email",
-            "message": "Clicca il pulsante in basso per confermare la tua email.",
-            "action_text": "Conferma email",
-            "action_url": verify_url,
-            "year": datetime.datetime.now().year,
-        }
-
-        html_content = render_to_string("emails/email_template.html", context)
-
-        send_mail(
-            subject="Verifica la tua email",
-            message="Clicca sul link per verificare la tua email.",
-            from_email='"ToDoWebApp Bale" <todoprovider@webdesign-vito-luigi.it>',
-            recipient_list=[user.email],
-            html_message=html_content,
-        )
-        return JsonResponse({"message": "Verification email sent"})
-
-## VIEW CONFIRM EMAIL
-class ConfirmEmailView(View):
-    def get(self, request, uidb64, token):
-        try:
-            uid_decoded = urlsafe_base64_decode(uidb64).decode()
-            user = User.objects.get(pk=uid_decoded)
-        except (User.DoesNotExist, ValueError, TypeError):
-            return JsonResponse({"verified": False}, status=400)
-
-        if user.is_active:
-            return JsonResponse({"verified": True})
-
-        if default_token_generator.check_token(user, token):
-            user.is_active = True
-            user.save()
-            return JsonResponse({"verified": True})
-
-        return JsonResponse({"verified": False}, status=400)
-
-
-## VIEW REGISTER
-@method_decorator(csrf_exempt, name='dispatch')
-class RegisterView(View):
-    def post(self, request):
-        data = json.loads(request.body)
-        username = data.get("username")
-        email = data.get("email")
-        password = data.get("password")
-
-        if not username or not email or not password:
-            return JsonResponse({"error": "Missing fields"}, status=400)
-
-        if User.objects.filter(username=username).exists():
-            return JsonResponse({"error": "Username già esistente"}, status=400)
-
-        if User.objects.filter(email=email).exists():
-            return JsonResponse({"error": "Email già registrata"}, status=400)
-
-        user = User.objects.create(
-            username=username,
-            email=email,
-            password=make_password(password),
-            is_active=False
-        )
-
-
-        return JsonResponse({"message": "register success"})
-
-## VIEW DEACTIVATE ACCOUNT
-@method_decorator(csrf_exempt, name="dispatch")
-@method_decorator(login_required, name="dispatch")
-class DeleteAccountView(View):
-    def delete(self, request):
-        user = request.user
-        user.delete()
-        return JsonResponse({"message": "Account disattivato"})
-
-@method_decorator(csrf_exempt, name='dispatch')
-class LoginView(View):
-    @method_decorator(csrf_exempt)
-    def post(self, request):
-        data = json.loads(request.body)
-        username = data.get("username")
-        password = data.get("password")
-
-        user = authenticate(request, username=username, password=password)
-        print("Auth result:", user)
-
-        try:
-            user = User.objects.get(username=username)
-        except User.DoesNotExist:
-            return JsonResponse({"message": "invalid credentials"}, status=401)
-
-        # Verifica password
-        from django.contrib.auth.hashers import check_password
-        if not check_password(password, user.password):
-            return JsonResponse({"message": "invalid credentials"}, status=401)
-
-        if not user.is_active:
-            uid = urlsafe_base64_encode(force_bytes(user.pk))
-            token = default_token_generator.make_token(user)
-            verify_url = f"http://localhost:5173/verify-email/{uid}/{token}"
-
-            context = {
-                "title": "Verifica la tua email",
-                "message": "Clicca il pulsante in basso per confermare la tua email.",
-                "action_text": "Conferma email",
-                "action_url": verify_url,
-                "year": datetime.now().year,
-            }
-            html_content = render_to_string("emails/email_verifica.html", context)
-
-            email = EmailMultiAlternatives(
-                subject="Verifica la tua email",
-                body="Clicca sul link per verificare la tua email.",
-                from_email="todoprovider@webdesign-vito-luigi.it",
-                to=[user.email],
-            )
-            email.attach_alternative(html_content, "text/html")
-            email.send()
-
-            return JsonResponse({"message": "email not verified"}, status=403)
-
-        # Se è attivo e la password è giusta, esegui il login
-        auth_login(request, user)
-        return JsonResponse({"message": "login success"})
-
-        return JsonResponse({"message": "invalid credentials"}, status=401)
-
-@method_decorator(csrf_exempt, name='dispatch')
-class LogoutView(View):
-    def post(self, request):
-        from django.contrib.auth import logout
-        logout(request)
-        return JsonResponse({'message': 'logout success'})

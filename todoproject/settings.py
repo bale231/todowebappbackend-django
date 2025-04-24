@@ -55,6 +55,7 @@ MIDDLEWARE = [
 
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
+
 # Sicurezza CSRF
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:5173",
