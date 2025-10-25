@@ -939,7 +939,13 @@ class UsersListView(APIView):
 
     def get(self, request):
         current_user = request.user
+        search_query = request.GET.get('search', '').strip()
+
         users = User.objects.exclude(id=current_user.id)
+
+        # Applica filtro di ricerca se presente
+        if search_query:
+            users = users.filter(username__icontains=search_query)
 
         data = []
         for user in users:
