@@ -352,6 +352,34 @@ class CategorySortPreferenceView(APIView):
         profile.save()
         return Response({"category_sort_alpha": profile.category_sort_alpha})
 
+## VIEW PER GESTIRE LA CATEGORIA SELEZIONATA
+class SelectedCategoryView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        """Recupera la categoria selezionata dall'utente"""
+        profile, created = Profile.objects.get_or_create(user=request.user)
+        selected_category_id = profile.selected_category.id if profile.selected_category else None
+        return Response({"selected_category": selected_category_id})
+
+    def patch(self, request):
+        """Salva la categoria selezionata dall'utente"""
+        profile, created = Profile.objects.get_or_create(user=request.user)
+        category_id = request.data.get("selected_category")
+
+        if category_id is None:
+            profile.selected_category = None
+        else:
+            try:
+                category = ListCategory.objects.get(id=category_id, user=request.user)
+                profile.selected_category = category
+            except ListCategory.DoesNotExist:
+                return Response({"error": "Categoria non trovata"}, status=404)
+
+        profile.save()
+        selected_category_id = profile.selected_category.id if profile.selected_category else None
+        return Response({"selected_category": selected_category_id})
+
 class CategoryListView(APIView):
     permission_classes = [IsAuthenticated]
 

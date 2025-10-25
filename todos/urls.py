@@ -26,6 +26,7 @@ urlpatterns = [
     path("categories/", ListCategoryListView.as_view(), name="list-categories"),
     path("categories/<int:pk>/", ListCategoryDetailView.as_view(), name="list-category-detail"),
     path("categories/sort_preference/", CategorySortPreferenceView.as_view(), name="category-sort-preference"),
+    path("categories/selected/", SelectedCategoryView.as_view(), name="selected-category"),
     path("lists/<int:list_id>/", SingleListView.as_view(), name="single-list"),
     # path("lists/<int:pk>/", CategoryDetailView.as_view(), name="category-detail"),
     path("lists/<int:list_id>/rename/", RenameListView.as_view(), name="list-rename"),
