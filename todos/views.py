@@ -15,7 +15,7 @@ from django.shortcuts import get_object_or_404
 from django.template.loader import render_to_string
 from django.db.models.functions import Lower
 from django.db.models import Q
-from .models import Todo, Category, Profile, Notification, FriendRequest, Friendship, ListCategory
+from .models import Todo, Category, Profile, Notification, FriendRequest, Friendship, ListCategory, SharedList, SharedCategory
 from .serializers import EmailOrUsernameTokenObtainPairSerializer, UserProfileSerializer, FriendRequestSerializer, FriendshipSerializer
 
 
@@ -287,9 +287,42 @@ class ListCategoryListView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        """Lista tutte le categorie dell'utente"""
+        """Lista tutte le categorie dell'utente e quelle condivise"""
+        # Categorie di proprietà dell'utente
         categories = ListCategory.objects.filter(user=request.user)
-        data = [{"id": cat.id, "name": cat.name} for cat in categories]
+
+        # Categorie condivise con l'utente
+        shared_categories = SharedCategory.objects.filter(shared_with=request.user).select_related('category')
+
+        data = []
+
+        # Aggiungi le categorie di proprietà
+        for cat in categories:
+            data.append({
+                "id": cat.id,
+                "name": cat.name,
+                "is_owner": True,
+                "is_shared": False,
+                "can_edit": True,
+                "shared_by": None
+            })
+
+        # Aggiungi le categorie condivise
+        for shared in shared_categories:
+            cat = shared.category
+            data.append({
+                "id": cat.id,
+                "name": cat.name,
+                "is_owner": False,
+                "is_shared": True,
+                "can_edit": shared.can_edit,
+                "shared_by": {
+                    "id": shared.shared_by.id,
+                    "username": shared.shared_by.username,
+                    "full_name": shared.shared_by.profile.get_full_name() if hasattr(shared.shared_by, 'profile') else shared.shared_by.username
+                }
+            })
+
         return Response(data)
 
     def post(self, request):
@@ -385,9 +418,16 @@ class CategoryListView(APIView):
 
     def get(self, request):
         user = request.user
+
+        # Liste di proprietà dell'utente
         categories = Category.objects.filter(user=user)
+
+        # Liste condivise con l'utente
+        shared_lists = SharedList.objects.filter(shared_with=user).select_related('list')
+
         data = []
 
+        # Aggiungi le liste di proprietà dell'utente
         for cat in categories:
             sort_order = getattr(cat, 'sort_order', 'created') or 'created'
 
@@ -398,7 +438,6 @@ class CategoryListView(APIView):
             else:
                 todos = cat.todo_set.order_by('-id')
 
-            # ✅ AGGIUNGI IL CAMPO CATEGORY
             category_data = None
             if cat.category:
                 category_data = {"id": cat.category.id, "name": cat.category.name}
@@ -409,7 +448,11 @@ class CategoryListView(APIView):
                 "color": getattr(cat, "color", "blue"),
                 "created_at": getattr(cat, "created_at", ""),
                 "sort_order": sort_order,
-                "category": category_data,  # ✅ NUOVO
+                "category": category_data,
+                "is_owner": True,
+                "is_shared": False,
+                "can_edit": True,
+                "shared_by": None,
                 "todos": [
                     {
                         "id": t.id,
@@ -418,6 +461,47 @@ class CategoryListView(APIView):
                     } for t in todos
                 ]
             })
+
+        # Aggiungi le liste condivise con l'utente
+        for shared in shared_lists:
+            cat = shared.list
+            sort_order = getattr(cat, 'sort_order', 'created') or 'created'
+
+            if sort_order == "alphabetical":
+                todos = cat.todo_set.order_by(Lower('title'))
+            elif sort_order == "completed":
+                todos = cat.todo_set.order_by('completed', '-id')
+            else:
+                todos = cat.todo_set.order_by('-id')
+
+            category_data = None
+            if cat.category:
+                category_data = {"id": cat.category.id, "name": cat.category.name}
+
+            data.append({
+                "id": cat.id,
+                "name": cat.name,
+                "color": getattr(cat, "color", "blue"),
+                "created_at": getattr(cat, "created_at", ""),
+                "sort_order": sort_order,
+                "category": category_data,
+                "is_owner": False,
+                "is_shared": True,
+                "can_edit": shared.can_edit,
+                "shared_by": {
+                    "id": shared.shared_by.id,
+                    "username": shared.shared_by.username,
+                    "full_name": shared.shared_by.profile.get_full_name() if hasattr(shared.shared_by, 'profile') else shared.shared_by.username
+                },
+                "todos": [
+                    {
+                        "id": t.id,
+                        "title": t.title,
+                        "completed": t.completed
+                    } for t in todos
+                ]
+            })
+
         return Response(data)
 
     def post(self, request):
@@ -452,19 +536,36 @@ class SingleListView(APIView):
 
     def get(self, request, list_id):
         user = request.user
-        try:
-            category = Category.objects.get(id=list_id, user=user)
-        except Category.DoesNotExist:
-            return Response({"error": "Not found"}, status=404)
+
+        # Controlla se l'utente è il proprietario
+        category = Category.objects.filter(id=list_id, user=user).first()
+
+        is_owner = True
+        can_edit = True
+        shared_by_info = None
+
+        # Se non è il proprietario, controlla se è condivisa con lui
+        if not category:
+            shared = SharedList.objects.filter(list_id=list_id, shared_with=user).select_related('list', 'shared_by').first()
+            if not shared:
+                return Response({"error": "Not found"}, status=404)
+            category = shared.list
+            is_owner = False
+            can_edit = shared.can_edit
+            shared_by_info = {
+                "id": shared.shared_by.id,
+                "username": shared.shared_by.username,
+                "full_name": shared.shared_by.profile.get_full_name() if hasattr(shared.shared_by, 'profile') else shared.shared_by.username
+            }
 
         sort_order = getattr(category, 'sort_order', 'created') or 'created'
 
         if sort_order == "alphabetical":
             todos = category.todo_set.order_by(Lower('title'))
         elif sort_order == "completed":
-            todos = category.todo_set.order_by('completed', '-id')  # ✅ Usa -id
-        else:  # "created"
-            todos = category.todo_set.order_by('-id')  # ✅ Usa -id
+            todos = category.todo_set.order_by('completed', '-id')
+        else:
+            todos = category.todo_set.order_by('-id')
 
         todos_list = list(todos.values("id", "title", "completed"))
 
@@ -474,6 +575,9 @@ class SingleListView(APIView):
             "color": category.color,
             "created_at": category.created_at,
             "sort_order": sort_order,
+            "is_owner": is_owner,
+            "can_edit": can_edit,
+            "shared_by": shared_by_info,
             "todos": todos_list
         })
 
@@ -482,37 +586,44 @@ class SingleListView(APIView):
         data = request.data
         name = data.get("name")
         color = data.get("color")
-        category_id = data.get("category")  # ✅ NUOVO
+        category_id = data.get("category")
 
-        try:
-            category = Category.objects.get(id=list_id, user=user)
-            category.name = name
-            category.color = color
+        # Controlla se l'utente è il proprietario
+        category = Category.objects.filter(id=list_id, user=user).first()
 
-            # ✅ GESTISCI LA CATEGORIA
-            if category_id is not None:
-                if category_id == "":
-                    category.category = None
-                else:
-                    try:
-                        list_category = ListCategory.objects.get(id=category_id, user=user)
-                        category.category = list_category
-                    except ListCategory.DoesNotExist:
-                        return Response({"error": "Categoria non trovata"}, status=404)
+        # Se non è il proprietario, controlla se può modificare
+        if not category:
+            shared = SharedList.objects.filter(list_id=list_id, shared_with=user, can_edit=True).first()
+            if not shared:
+                return Response({"error": "Permesso negato"}, status=403)
+            category = shared.list
 
-            category.save()
-            return Response({"message": "Lista aggiornata"})
-        except Category.DoesNotExist:
-            return Response({"error": "Not found"}, status=404)
+        category.name = name
+        category.color = color
+
+        # Gestisci la categoria (solo se proprietario)
+        if category.user == user and category_id is not None:
+            if category_id == "":
+                category.category = None
+            else:
+                try:
+                    list_category = ListCategory.objects.get(id=category_id, user=user)
+                    category.category = list_category
+                except ListCategory.DoesNotExist:
+                    return Response({"error": "Categoria non trovata"}, status=404)
+
+        category.save()
+        return Response({"message": "Lista aggiornata"})
 
     def delete(self, request, list_id):
         user = request.user
+        # Solo il proprietario può eliminare la lista
         try:
             category = Category.objects.get(id=list_id, user=user)
             category.delete()
             return Response({"message": "Lista eliminata"})
         except Category.DoesNotExist:
-            return Response({"error": "Not found"}, status=404)
+            return Response({"error": "Not found o permesso negato"}, status=404)
 
 ## VIEW UPDATE CATEGORY ORDER
 class UpdateListsOrderingView(APIView):
@@ -574,6 +685,28 @@ class CategoryDetailView(View):
 
 ### VIEW TODOS PAGE
 
+## HELPER: Verifica permessi su una lista
+def can_user_edit_list(user, list_id):
+    """Verifica se l'utente può modificare una lista (proprietario o condivisa con permessi)"""
+    # Controlla se è il proprietario
+    if Category.objects.filter(id=list_id, user=user).exists():
+        return True
+    # Controlla se è condivisa con permessi di modifica
+    if SharedList.objects.filter(list_id=list_id, shared_with=user, can_edit=True).exists():
+        return True
+    return False
+
+def get_category_if_accessible(user, list_id):
+    """Ritorna la categoria se l'utente ha accesso (proprietario o condivisa)"""
+    category = Category.objects.filter(id=list_id, user=user).first()
+    if category:
+        return category
+    # Controlla se è condivisa
+    shared = SharedList.objects.filter(list_id=list_id, shared_with=user).first()
+    if shared:
+        return shared.list
+    return None
+
 ## VIEW CREATE TODO
 class TodoCreateView(APIView):
     permission_classes = [IsAuthenticated]
@@ -582,9 +715,12 @@ class TodoCreateView(APIView):
         user = request.user
         title = request.data.get("title")
 
-        try:
-            category = Category.objects.get(pk=list_id, user=user)
-        except Category.DoesNotExist:
+        # Verifica se può modificare la lista
+        if not can_user_edit_list(user, list_id):
+            return Response({"error": "Permesso negato"}, status=403)
+
+        category = get_category_if_accessible(user, list_id)
+        if not category:
             return Response({"error": "Categoria non trovata"}, status=404)
 
         todo = Todo.objects.create(title=title, category=category)
@@ -595,7 +731,16 @@ class TodoToggleView(APIView):
     permission_classes = [IsAuthenticated]
 
     def patch(self, request, todo_id):
-        todo = get_object_or_404(Todo, pk=todo_id, category__user=request.user)
+        user = request.user
+        # Trova il todo
+        todo = Todo.objects.filter(pk=todo_id).first()
+        if not todo:
+            return Response({"error": "Todo non trovata"}, status=404)
+
+        # Verifica permessi sulla lista
+        if not can_user_edit_list(user, todo.category.id):
+            return Response({"error": "Permesso negato"}, status=403)
+
         todo.completed = not todo.completed
         todo.save()
         return Response({"success": True, "completed": todo.completed})
@@ -621,7 +766,15 @@ class TodoDeleteView(APIView):
     permission_classes = [IsAuthenticated]
 
     def delete(self, request, todo_id):
-        todo = get_object_or_404(Todo, pk=todo_id, category__user=request.user)
+        user = request.user
+        todo = Todo.objects.filter(pk=todo_id).first()
+        if not todo:
+            return Response({"error": "Todo non trovata"}, status=404)
+
+        # Verifica permessi sulla lista
+        if not can_user_edit_list(user, todo.category.id):
+            return Response({"error": "Permesso negato"}, status=403)
+
         todo.delete()
         return Response({"success": True})
 
@@ -642,14 +795,20 @@ class TodoUpdateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def patch(self, request, todo_id):
-        try:
-            new_title = request.data.get("title")
-            todo = Todo.objects.get(id=todo_id, category__user=request.user)
-            todo.title = new_title
-            todo.save()
-            return Response({"success": True, "title": todo.title})
-        except Todo.DoesNotExist:
+        user = request.user
+        new_title = request.data.get("title")
+
+        todo = Todo.objects.filter(id=todo_id).first()
+        if not todo:
             return Response({"error": "ToDo not found"}, status=404)
+
+        # Verifica permessi sulla lista
+        if not can_user_edit_list(user, todo.category.id):
+            return Response({"error": "Permesso negato"}, status=403)
+
+        todo.title = new_title
+        todo.save()
+        return Response({"success": True, "title": todo.title})
 
 ## VIEW MOVE TODO TO ANOTHER LIST
 class MoveTodoView(APIView):
@@ -1174,6 +1333,206 @@ class RemoveFriendView(APIView):
 
         friendship.delete()
         return Response({"message": "Amico rimosso"})
+
+
+### SHARING SYSTEM VIEWS
+
+## VIEW CONDIVIDI LISTA
+class ShareListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, list_id):
+        """Condividi una lista con un utente"""
+        user_id = request.data.get('user_id')
+        can_edit = request.data.get('can_edit', False)
+
+        if not user_id:
+            return Response({"error": "user_id richiesto"}, status=400)
+
+        try:
+            # Verifica che la lista appartenga all'utente
+            list_obj = Category.objects.get(id=list_id, user=request.user)
+            target_user = User.objects.get(id=user_id)
+        except Category.DoesNotExist:
+            return Response({"error": "Lista non trovata"}, status=404)
+        except User.DoesNotExist:
+            return Response({"error": "Utente non trovato"}, status=404)
+
+        # Non puoi condividere con te stesso
+        if target_user == request.user:
+            return Response({"error": "Non puoi condividere con te stesso"}, status=400)
+
+        # Controlla se è già condivisa
+        existing = SharedList.objects.filter(list=list_obj, shared_with=target_user).first()
+        if existing:
+            # Aggiorna i permessi se già condivisa
+            existing.can_edit = can_edit
+            existing.save()
+            return Response({"message": "Permessi aggiornati", "can_edit": can_edit})
+
+        # Crea la condivisione
+        SharedList.objects.create(
+            list=list_obj,
+            shared_by=request.user,
+            shared_with=target_user,
+            can_edit=can_edit
+        )
+
+        # Crea notifica
+        Notification.objects.create(
+            user=target_user,
+            type='list_modified',
+            title='Lista condivisa con te',
+            message=f'{request.user.profile.get_full_name()} ha condiviso la lista "{list_obj.name}" con te',
+            from_user=request.user,
+            list_name=list_obj.name
+        )
+
+        return Response({"message": "Lista condivisa con successo"})
+
+
+## VIEW RIMUOVI CONDIVISIONE LISTA
+class UnshareListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, list_id, user_id):
+        """Rimuovi la condivisione di una lista con un utente"""
+        try:
+            list_obj = Category.objects.get(id=list_id, user=request.user)
+            shared = SharedList.objects.get(list=list_obj, shared_with_id=user_id)
+            shared.delete()
+            return Response({"message": "Condivisione rimossa"})
+        except Category.DoesNotExist:
+            return Response({"error": "Lista non trovata"}, status=404)
+        except SharedList.DoesNotExist:
+            return Response({"error": "Condivisione non trovata"}, status=404)
+
+
+## VIEW VEDI CON CHI È CONDIVISA UNA LISTA
+class ListSharesView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, list_id):
+        """Vedi con chi è condivisa una lista"""
+        try:
+            list_obj = Category.objects.get(id=list_id, user=request.user)
+            shares = SharedList.objects.filter(list=list_obj).select_related('shared_with')
+
+            data = []
+            for share in shares:
+                user = share.shared_with
+                profile = getattr(user, 'profile', None)
+                data.append({
+                    "user_id": user.id,
+                    "username": user.username,
+                    "full_name": profile.get_full_name() if profile else user.username,
+                    "profile_picture": profile.profile_picture.url if profile and profile.profile_picture else None,
+                    "can_edit": share.can_edit,
+                    "shared_at": share.created_at.isoformat()
+                })
+
+            return Response(data)
+        except Category.DoesNotExist:
+            return Response({"error": "Lista non trovata"}, status=404)
+
+
+## VIEW CONDIVIDI CATEGORIA
+class ShareCategoryView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, category_id):
+        """Condividi una categoria con un utente"""
+        user_id = request.data.get('user_id')
+        can_edit = request.data.get('can_edit', False)
+
+        if not user_id:
+            return Response({"error": "user_id richiesto"}, status=400)
+
+        try:
+            # Verifica che la categoria appartenga all'utente
+            category = ListCategory.objects.get(id=category_id, user=request.user)
+            target_user = User.objects.get(id=user_id)
+        except ListCategory.DoesNotExist:
+            return Response({"error": "Categoria non trovata"}, status=404)
+        except User.DoesNotExist:
+            return Response({"error": "Utente non trovato"}, status=404)
+
+        # Non puoi condividere con te stesso
+        if target_user == request.user:
+            return Response({"error": "Non puoi condividere con te stesso"}, status=400)
+
+        # Controlla se è già condivisa
+        existing = SharedCategory.objects.filter(category=category, shared_with=target_user).first()
+        if existing:
+            # Aggiorna i permessi se già condivisa
+            existing.can_edit = can_edit
+            existing.save()
+            return Response({"message": "Permessi aggiornati", "can_edit": can_edit})
+
+        # Crea la condivisione
+        SharedCategory.objects.create(
+            category=category,
+            shared_by=request.user,
+            shared_with=target_user,
+            can_edit=can_edit
+        )
+
+        # Crea notifica
+        Notification.objects.create(
+            user=target_user,
+            type='general',
+            title='Categoria condivisa con te',
+            message=f'{request.user.profile.get_full_name()} ha condiviso la categoria "{category.name}" con te',
+            from_user=request.user
+        )
+
+        return Response({"message": "Categoria condivisa con successo"})
+
+
+## VIEW RIMUOVI CONDIVISIONE CATEGORIA
+class UnshareCategoryView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, category_id, user_id):
+        """Rimuovi la condivisione di una categoria con un utente"""
+        try:
+            category = ListCategory.objects.get(id=category_id, user=request.user)
+            shared = SharedCategory.objects.get(category=category, shared_with_id=user_id)
+            shared.delete()
+            return Response({"message": "Condivisione rimossa"})
+        except ListCategory.DoesNotExist:
+            return Response({"error": "Categoria non trovata"}, status=404)
+        except SharedCategory.DoesNotExist:
+            return Response({"error": "Condivisione non trovata"}, status=404)
+
+
+## VIEW VEDI CON CHI È CONDIVISA UNA CATEGORIA
+class CategorySharesView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, category_id):
+        """Vedi con chi è condivisa una categoria"""
+        try:
+            category = ListCategory.objects.get(id=category_id, user=request.user)
+            shares = SharedCategory.objects.filter(category=category).select_related('shared_with')
+
+            data = []
+            for share in shares:
+                user = share.shared_with
+                profile = getattr(user, 'profile', None)
+                data.append({
+                    "user_id": user.id,
+                    "username": user.username,
+                    "full_name": profile.get_full_name() if profile else user.username,
+                    "profile_picture": profile.profile_picture.url if profile and profile.profile_picture else None,
+                    "can_edit": share.can_edit,
+                    "shared_at": share.created_at.isoformat()
+                })
+
+            return Response(data)
+        except ListCategory.DoesNotExist:
+            return Response({"error": "Categoria non trovata"}, status=404)
+
 
 ## FUNCTION TO CREATE NOTIFICATION (utility)
 def create_notification(user, notif_type, title, message, from_user=None, list_name=None):

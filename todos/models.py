@@ -142,6 +142,39 @@ class Friendship(models.Model):
             friends.append(friend)
         return friends
 
+
+class SharedList(models.Model):
+    """Condivisione di una lista (Category) con un utente"""
+    list = models.ForeignKey(Category, on_delete=models.CASCADE, related_name='shares')
+    shared_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='lists_shared_by')
+    shared_with = models.ForeignKey(User, on_delete=models.CASCADE, related_name='lists_shared_with')
+    can_edit = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ['list', 'shared_with']
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.list.name} condivisa da {self.shared_by.username} con {self.shared_with.username}"
+
+
+class SharedCategory(models.Model):
+    """Condivisione di una categoria (ListCategory) con un utente"""
+    category = models.ForeignKey(ListCategory, on_delete=models.CASCADE, related_name='shares')
+    shared_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='categories_shared_by')
+    shared_with = models.ForeignKey(User, on_delete=models.CASCADE, related_name='categories_shared_with')
+    can_edit = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ['category', 'shared_with']
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.category.name} condivisa da {self.shared_by.username} con {self.shared_with.username}"
+
+
 # Segnale per creare automaticamente il profilo quando viene creato un nuovo utente
 @receiver(post_save, sender=User)
 def create_user_profile(sender, instance, created, **kwargs):

@@ -58,4 +58,14 @@ urlpatterns = [
     path("friend-requests/<int:request_id>/accept/", AcceptFriendRequestView.as_view(), name="accept-friend-request"),
     path("friend-requests/<int:request_id>/reject/", RejectFriendRequestView.as_view(), name="reject-friend-request"),
     path("friends/<int:user_id>/remove/", RemoveFriendView.as_view(), name="remove-friend"),
+
+    # --- ✅ Sistema Condivisione Liste ---
+    path("lists/<int:list_id>/share/", ShareListView.as_view(), name="share-list"),
+    path("lists/<int:list_id>/share/<int:user_id>/", UnshareListView.as_view(), name="unshare-list"),
+    path("lists/<int:list_id>/shares/", ListSharesView.as_view(), name="list-shares"),
+
+    # --- ✅ Sistema Condivisione Categorie ---
+    path("categories/<int:category_id>/share/", ShareCategoryView.as_view(), name="share-category"),
+    path("categories/<int:category_id>/share/<int:user_id>/", UnshareCategoryView.as_view(), name="unshare-category"),
+    path("categories/<int:category_id>/shares/", CategorySharesView.as_view(), name="category-shares"),
 ]
