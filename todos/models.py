@@ -47,6 +47,13 @@ class Profile(models.Model):
     last_name = models.CharField(max_length=50, blank=True, null=True)
     bio = models.TextField(max_length=500, blank=True, null=True)
     fcm_token = models.TextField(blank=True, null=True)
+    selected_category = models.ForeignKey(
+        'ListCategory',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='selected_by_profiles'
+    )
 
     def __str__(self):
         return f"Profilo di {self.user.username}"
