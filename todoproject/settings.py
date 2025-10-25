@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 
 import os
 from pathlib import Path
+from datetime import timedelta
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -26,7 +27,7 @@ SECRET_KEY = 'django-insecure-nb$!e*2dl=3*%102qsgjq9%4=wtwl@=%5hl8f3_=gq=@ox$46u
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False
 
-ALLOWED_HOSTS = ["https://bale231.pythonanywhere.com/"]
+ALLOWED_HOSTS = ["bale231.pythonanywhere.com", "www.bale231.pythonanywhere.com"]
 
 
 # Application definition
@@ -38,9 +39,31 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'rest_framework',
+    'rest_framework_simplejwt',
     'todos',
     'corsheaders',
 ]
+
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    )
+}
+
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
+    "ROTATE_REFRESH_TOKENS": False,
+    "BLACKLIST_AFTER_ROTATION": False,
+    "AUTH_HEADER_TYPES": ("Bearer",),
+    "AUTH_HEADER_NAME": "HTTP_AUTHORIZATION",
+    "ALGORITHM": "HS256",
+    "SIGNING_KEY": SECRET_KEY,
+    "USER_ID_FIELD": "id",
+    "USER_ID_CLAIM": "user_id",
+}
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -53,38 +76,48 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOW_CREDENTIALS = True
-# Sicurezza CSRF
-CSRF_TRUSTED_ORIGINS = [
+
+CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "https://todowebapp-frontend-reactts-stml.vercel.app",
+    "http://localhost:8081",  # Expo web
+    "http://localhost:19006",  # Expo web alternativo
 ]
-
-# Cross Origin JS fetch
-CORS_ALLOWED_ORIGINS = [
+CSRF_TRUSTED_ORIGINS = [
     "http://localhost:5173",
     "https://todowebapp-frontend-reactts-stml.vercel.app"
 ]
-
+CORS_ALLOW_HEADERS = [
+    'authorization',
+    'content-type',
+    'accept',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
 
 ROOT_URLCONF = 'todoproject.urls'
 
+MEDIA_URL = "https://bale231.pythonanywhere.com/media/"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'mail.webdesign-vito-luigi.it'
-EMAIL_PORT = 465
-EMAIL_USE_SSL = True
-EMAIL_HOST_USER = 'todoprovider@webdesign-vito-luigi.it'
-EMAIL_HOST_PASSWORD = '*3bfi53&&$x*'
-DEFAULT_FROM_EMAIL = 'todoprovider@webdesign-vito-luigi.it'
+EMAIL_HOST = 'smtp-relay.brevo.com'
+EMAIL_PORT = 587
+EMAIL_HOST_USER = 'todoapp@webdesign-vito-luigi.it'
+EMAIL_HOST_PASSWORD = ')]1%2$2m64hd'
+EMAIL_USE_TLS = True
+DEFAULT_FROM_EMAIL = '"ToDoApp" <todoapp@webdesign-vito-luigi.it>'
+
 
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [os.path.join(BASE_DIR, 'todos', 'templates')],
+        'DIRS': [os.path.join(BASE_DIR, 'templates')],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -151,3 +184,10 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+SESSION_COOKIE_SAMESITE = "None"
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SAMESITE = "None"
+CSRF_COOKIE_SECURE = True
+
+LOGIN_URL = '/api/unauthorized/'
