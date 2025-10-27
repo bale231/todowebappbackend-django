@@ -5,15 +5,19 @@ Compatibile con PythonAnywhere Free Tier
 
 import requests
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
-# ⚠️ IMPORTANTE: Sostituisci questa API key con la tua da Brevo
+# ⚠️ IMPORTANTE: Per abilitare l'invio email, imposta la variabile d'ambiente BREVO_API_KEY
 # Per ottenerla: https://app.brevo.com/settings/keys/api
-# La API key attuale è un placeholder e va sostituita
-BREVO_API_KEY = "xkeysib-INSERISCI_TUA_API_KEY_QUI"
+# Esempio: export BREVO_API_KEY="xkeysib-tua-chiave-qui"
+BREVO_API_KEY = os.environ.get('BREVO_API_KEY', '')
 
 BREVO_API_URL = "https://api.brevo.com/v3/smtp/email"
+
+# Verifica se Brevo è configurato
+EMAIL_ENABLED = bool(BREVO_API_KEY and BREVO_API_KEY.startswith('xkeysib-'))
 
 
 def send_verification_email(to_email, subject, html_content):
@@ -26,8 +30,14 @@ def send_verification_email(to_email, subject, html_content):
         html_content (str): Contenuto HTML dell'email
 
     Returns:
-        bool: True se email inviata con successo, False altrimenti
+        bool: True se email inviata con successo o se email disabilitate, False solo in caso di errore
     """
+
+    # Se email non sono abilitate, ritorna True (successo silenzioso)
+    if not EMAIL_ENABLED:
+        logger.info(f"⚠️ Invio email disabilitato. Email non inviata a {to_email}")
+        logger.info("   Per abilitare: imposta variabile d'ambiente BREVO_API_KEY")
+        return True
 
     headers = {
         "accept": "application/json",

@@ -35,7 +35,7 @@ from datetime import datetime, timedelta
 import logging
 import json
 from todoproject.firebase_config import send_push_notification
-from todoproject.email_service import send_verification_email, send_password_reset_email
+from todoproject.email_service import send_verification_email, send_password_reset_email, EMAIL_ENABLED
 
 logger = logging.getLogger(__name__)
 
@@ -193,6 +193,19 @@ class RegisterView(View):
         if User.objects.filter(email=email).exists():
             return JsonResponse({"error": "Email già registrata"}, status=400)
 
+        # Se le email non sono abilitate, crea utente già attivo
+        if not EMAIL_ENABLED:
+            user = User.objects.create(
+                username=username,
+                email=email,
+                password=make_password(password),
+                is_active=True,  # ✅ Utente attivo subito se email disabilitate
+            )
+            return JsonResponse({
+                "message": "Registrazione completata con successo!",
+                "email_verification_required": False
+            })
+
         # ✅ Crea utente non attivo (deve verificare email)
         user = User.objects.create(
             username=username,
@@ -222,7 +235,10 @@ class RegisterView(View):
             user.delete()
             return JsonResponse({"error": "Errore invio email di verifica. Riprova."}, status=500)
 
-        return JsonResponse({"message": "Registrazione completata! Controlla la tua email per verificare l'account."})
+        return JsonResponse({
+            "message": "Registrazione completata! Controlla la tua email per verificare l'account.",
+            "email_verification_required": True
+        })
 
 ## VIEW DELETE ACCOUNT
 class DeleteAccountView(APIView):
