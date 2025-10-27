@@ -432,15 +432,33 @@ class CategoryListView(APIView):
             sort_order = getattr(cat, 'sort_order', 'created') or 'created'
 
             if sort_order == "alphabetical":
-                todos = cat.todo_set.order_by(Lower('title'))
+                todos = cat.todo_set.select_related('created_by', 'created_by__profile').order_by(Lower('title'))
             elif sort_order == "completed":
-                todos = cat.todo_set.order_by('completed', '-id')
+                todos = cat.todo_set.select_related('created_by', 'created_by__profile').order_by('completed', '-id')
             else:
-                todos = cat.todo_set.order_by('-id')
+                todos = cat.todo_set.select_related('created_by', 'created_by__profile').order_by('-id')
 
             category_data = None
             if cat.category:
                 category_data = {"id": cat.category.id, "name": cat.category.name}
+
+            # Costruisci lista todos con created_by
+            todos_list = []
+            for t in todos:
+                todo_data = {
+                    "id": t.id,
+                    "title": t.title,
+                    "completed": t.completed
+                }
+                if t.created_by:
+                    todo_data["created_by"] = {
+                        "id": t.created_by.id,
+                        "username": t.created_by.username,
+                        "full_name": t.created_by.profile.get_full_name() if hasattr(t.created_by, 'profile') else t.created_by.username
+                    }
+                else:
+                    todo_data["created_by"] = None
+                todos_list.append(todo_data)
 
             data.append({
                 "id": cat.id,
@@ -453,13 +471,7 @@ class CategoryListView(APIView):
                 "is_shared": False,
                 "can_edit": True,
                 "shared_by": None,
-                "todos": [
-                    {
-                        "id": t.id,
-                        "title": t.title,
-                        "completed": t.completed
-                    } for t in todos
-                ]
+                "todos": todos_list
             })
 
         # Aggiungi le liste condivise con l'utente
@@ -468,15 +480,33 @@ class CategoryListView(APIView):
             sort_order = getattr(cat, 'sort_order', 'created') or 'created'
 
             if sort_order == "alphabetical":
-                todos = cat.todo_set.order_by(Lower('title'))
+                todos = cat.todo_set.select_related('created_by', 'created_by__profile').order_by(Lower('title'))
             elif sort_order == "completed":
-                todos = cat.todo_set.order_by('completed', '-id')
+                todos = cat.todo_set.select_related('created_by', 'created_by__profile').order_by('completed', '-id')
             else:
-                todos = cat.todo_set.order_by('-id')
+                todos = cat.todo_set.select_related('created_by', 'created_by__profile').order_by('-id')
 
             category_data = None
             if cat.category:
                 category_data = {"id": cat.category.id, "name": cat.category.name}
+
+            # Costruisci lista todos con created_by
+            todos_list = []
+            for t in todos:
+                todo_data = {
+                    "id": t.id,
+                    "title": t.title,
+                    "completed": t.completed
+                }
+                if t.created_by:
+                    todo_data["created_by"] = {
+                        "id": t.created_by.id,
+                        "username": t.created_by.username,
+                        "full_name": t.created_by.profile.get_full_name() if hasattr(t.created_by, 'profile') else t.created_by.username
+                    }
+                else:
+                    todo_data["created_by"] = None
+                todos_list.append(todo_data)
 
             data.append({
                 "id": cat.id,
@@ -493,13 +523,7 @@ class CategoryListView(APIView):
                     "username": shared.shared_by.username,
                     "full_name": shared.shared_by.profile.get_full_name() if hasattr(shared.shared_by, 'profile') else shared.shared_by.username
                 },
-                "todos": [
-                    {
-                        "id": t.id,
-                        "title": t.title,
-                        "completed": t.completed
-                    } for t in todos
-                ]
+                "todos": todos_list
             })
 
         return Response(data)
@@ -561,13 +585,42 @@ class SingleListView(APIView):
         sort_order = getattr(category, 'sort_order', 'created') or 'created'
 
         if sort_order == "alphabetical":
-            todos = category.todo_set.order_by(Lower('title'))
+            todos = category.todo_set.select_related('created_by', 'created_by__profile').order_by(Lower('title'))
         elif sort_order == "completed":
-            todos = category.todo_set.order_by('completed', '-id')
+            todos = category.todo_set.select_related('created_by', 'created_by__profile').order_by('completed', '-id')
         else:
-            todos = category.todo_set.order_by('-id')
+            todos = category.todo_set.select_related('created_by', 'created_by__profile').order_by('-id')
 
-        todos_list = list(todos.values("id", "title", "completed"))
+        # Costruisci lista todos con created_by
+        todos_list = []
+        for todo in todos:
+            todo_data = {
+                "id": todo.id,
+                "title": todo.title,
+                "completed": todo.completed
+            }
+
+            # Aggiungi created_by se presente
+            if todo.created_by:
+                todo_data["created_by"] = {
+                    "id": todo.created_by.id,
+                    "username": todo.created_by.username,
+                    "full_name": todo.created_by.profile.get_full_name() if hasattr(todo.created_by, 'profile') else todo.created_by.username
+                }
+            else:
+                todo_data["created_by"] = None
+
+            todos_list.append(todo_data)
+
+        # Recupera lista utenti con cui è condivisa (solo se proprietario)
+        shared_with_list = []
+        if is_owner:
+            shares = SharedList.objects.filter(list=category).select_related('shared_with', 'shared_with__profile')
+            for share in shares:
+                shared_with_list.append({
+                    "username": share.shared_with.username,
+                    "full_name": share.shared_with.profile.get_full_name() if hasattr(share.shared_with, 'profile') else share.shared_with.username
+                })
 
         return Response({
             "id": category.id,
@@ -578,6 +631,7 @@ class SingleListView(APIView):
             "is_owner": is_owner,
             "can_edit": can_edit,
             "shared_by": shared_by_info,
+            "shared_with": shared_with_list,
             "todos": todos_list
         })
 
@@ -723,8 +777,21 @@ class TodoCreateView(APIView):
         if not category:
             return Response({"error": "Categoria non trovata"}, status=404)
 
-        todo = Todo.objects.create(title=title, category=category)
-        return Response({"id": todo.id, "title": todo.title, "completed": todo.completed})
+        todo = Todo.objects.create(title=title, category=category, created_by=user)
+
+        # Prepara info created_by
+        created_by_info = {
+            "id": user.id,
+            "username": user.username,
+            "full_name": user.profile.get_full_name() if hasattr(user, 'profile') else user.username
+        }
+
+        return Response({
+            "id": todo.id,
+            "title": todo.title,
+            "completed": todo.completed,
+            "created_by": created_by_info
+        })
 
 ## VIEW TOGGLE TODO
 class TodoToggleView(APIView):
