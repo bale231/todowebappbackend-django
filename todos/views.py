@@ -34,6 +34,8 @@ from datetime import datetime, timedelta
 ## Import module
 import logging
 import json
+from todoproject.firebase_config import send_push_notification
+
 logger = logging.getLogger(__name__)
 
 ## Function for unauthorized
@@ -821,7 +823,7 @@ class TodoCreateView(APIView):
         for share in shares:
             # Non notificare chi ha creato il todo
             if share.shared_with != user:
-                Notification.objects.create(
+                notification = Notification.objects.create(
                     user=share.shared_with,
                     type='list_modified',
                     title='Nuovo todo aggiunto',
@@ -830,9 +832,18 @@ class TodoCreateView(APIView):
                     list_name=category.name
                 )
 
+                # Invia notifica push
+                to_profile = getattr(share.shared_with, 'profile', None)
+                if to_profile and to_profile.push_notifications_enabled and to_profile.fcm_token:
+                    send_push_notification(
+                        fcm_token=to_profile.fcm_token,
+                        title=notification.title,
+                        body=notification.message
+                    )
+
         # Se l'utente che ha creato il todo non è il proprietario, notifica il proprietario
         if category.user != user:
-            Notification.objects.create(
+            notification = Notification.objects.create(
                 user=category.user,
                 type='list_modified',
                 title='Nuovo todo aggiunto',
@@ -840,6 +851,15 @@ class TodoCreateView(APIView):
                 from_user=user,
                 list_name=category.name
             )
+
+            # Invia notifica push
+            owner_profile = getattr(category.user, 'profile', None)
+            if owner_profile and owner_profile.push_notifications_enabled and owner_profile.fcm_token:
+                send_push_notification(
+                    fcm_token=owner_profile.fcm_token,
+                    title=notification.title,
+                    body=notification.message
+                )
 
         return Response({
             "id": todo.id,
@@ -909,7 +929,7 @@ class TodoDeleteView(APIView):
         for share in shares:
             # Non notificare chi ha eliminato il todo
             if share.shared_with != user:
-                Notification.objects.create(
+                notification = Notification.objects.create(
                     user=share.shared_with,
                     type='list_modified',
                     title='Todo eliminato',
@@ -918,9 +938,18 @@ class TodoDeleteView(APIView):
                     list_name=category.name
                 )
 
+                # Invia notifica push
+                to_profile = getattr(share.shared_with, 'profile', None)
+                if to_profile and to_profile.push_notifications_enabled and to_profile.fcm_token:
+                    send_push_notification(
+                        fcm_token=to_profile.fcm_token,
+                        title=notification.title,
+                        body=notification.message
+                    )
+
         # Se l'utente che ha eliminato il todo non è il proprietario, notifica il proprietario
         if category.user != user:
-            Notification.objects.create(
+            notification = Notification.objects.create(
                 user=category.user,
                 type='list_modified',
                 title='Todo eliminato',
@@ -928,6 +957,15 @@ class TodoDeleteView(APIView):
                 from_user=user,
                 list_name=category.name
             )
+
+            # Invia notifica push
+            owner_profile = getattr(category.user, 'profile', None)
+            if owner_profile and owner_profile.push_notifications_enabled and owner_profile.fcm_token:
+                send_push_notification(
+                    fcm_token=owner_profile.fcm_token,
+                    title=notification.title,
+                    body=notification.message
+                )
 
         return Response({"success": True})
 
@@ -970,7 +1008,7 @@ class TodoUpdateView(APIView):
         for share in shares:
             # Non notificare chi ha modificato il todo
             if share.shared_with != user:
-                Notification.objects.create(
+                notification = Notification.objects.create(
                     user=share.shared_with,
                     type='list_modified',
                     title='Todo modificato',
@@ -979,9 +1017,18 @@ class TodoUpdateView(APIView):
                     list_name=category.name
                 )
 
+                # Invia notifica push
+                to_profile = getattr(share.shared_with, 'profile', None)
+                if to_profile and to_profile.push_notifications_enabled and to_profile.fcm_token:
+                    send_push_notification(
+                        fcm_token=to_profile.fcm_token,
+                        title=notification.title,
+                        body=notification.message
+                    )
+
         # Se l'utente che ha modificato il todo non è il proprietario, notifica il proprietario
         if category.user != user:
-            Notification.objects.create(
+            notification = Notification.objects.create(
                 user=category.user,
                 type='list_modified',
                 title='Todo modificato',
@@ -989,6 +1036,15 @@ class TodoUpdateView(APIView):
                 from_user=user,
                 list_name=category.name
             )
+
+            # Invia notifica push
+            owner_profile = getattr(category.user, 'profile', None)
+            if owner_profile and owner_profile.push_notifications_enabled and owner_profile.fcm_token:
+                send_push_notification(
+                    fcm_token=owner_profile.fcm_token,
+                    title=notification.title,
+                    body=notification.message
+                )
 
         return Response({"success": True, "title": todo.title})
 
