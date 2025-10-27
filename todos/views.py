@@ -432,17 +432,17 @@ class CategoryListView(APIView):
             sort_order = getattr(cat, 'sort_order', 'created') or 'created'
 
             if sort_order == "alphabetical":
-                todos = cat.todo_set.select_related('created_by', 'created_by__profile').order_by(Lower('title'))
+                todos = cat.todo_set.select_related('created_by', 'created_by__profile', 'modified_by', 'modified_by__profile').order_by(Lower('title'))
             elif sort_order == "completed":
-                todos = cat.todo_set.select_related('created_by', 'created_by__profile').order_by('completed', '-id')
+                todos = cat.todo_set.select_related('created_by', 'created_by__profile', 'modified_by', 'modified_by__profile').order_by('completed', '-id')
             else:
-                todos = cat.todo_set.select_related('created_by', 'created_by__profile').order_by('-id')
+                todos = cat.todo_set.select_related('created_by', 'created_by__profile', 'modified_by', 'modified_by__profile').order_by('-id')
 
             category_data = None
             if cat.category:
                 category_data = {"id": cat.category.id, "name": cat.category.name}
 
-            # Costruisci lista todos con created_by
+            # Costruisci lista todos con created_by e modified_by
             todos_list = []
             for t in todos:
                 todo_data = {
@@ -458,6 +458,16 @@ class CategoryListView(APIView):
                     }
                 else:
                     todo_data["created_by"] = None
+
+                if t.modified_by:
+                    todo_data["modified_by"] = {
+                        "id": t.modified_by.id,
+                        "username": t.modified_by.username,
+                        "full_name": t.modified_by.profile.get_full_name() if hasattr(t.modified_by, 'profile') else t.modified_by.username
+                    }
+                else:
+                    todo_data["modified_by"] = None
+
                 todos_list.append(todo_data)
 
             data.append({
@@ -480,17 +490,17 @@ class CategoryListView(APIView):
             sort_order = getattr(cat, 'sort_order', 'created') or 'created'
 
             if sort_order == "alphabetical":
-                todos = cat.todo_set.select_related('created_by', 'created_by__profile').order_by(Lower('title'))
+                todos = cat.todo_set.select_related('created_by', 'created_by__profile', 'modified_by', 'modified_by__profile').order_by(Lower('title'))
             elif sort_order == "completed":
-                todos = cat.todo_set.select_related('created_by', 'created_by__profile').order_by('completed', '-id')
+                todos = cat.todo_set.select_related('created_by', 'created_by__profile', 'modified_by', 'modified_by__profile').order_by('completed', '-id')
             else:
-                todos = cat.todo_set.select_related('created_by', 'created_by__profile').order_by('-id')
+                todos = cat.todo_set.select_related('created_by', 'created_by__profile', 'modified_by', 'modified_by__profile').order_by('-id')
 
             category_data = None
             if cat.category:
                 category_data = {"id": cat.category.id, "name": cat.category.name}
 
-            # Costruisci lista todos con created_by
+            # Costruisci lista todos con created_by e modified_by
             todos_list = []
             for t in todos:
                 todo_data = {
@@ -506,6 +516,16 @@ class CategoryListView(APIView):
                     }
                 else:
                     todo_data["created_by"] = None
+
+                if t.modified_by:
+                    todo_data["modified_by"] = {
+                        "id": t.modified_by.id,
+                        "username": t.modified_by.username,
+                        "full_name": t.modified_by.profile.get_full_name() if hasattr(t.modified_by, 'profile') else t.modified_by.username
+                    }
+                else:
+                    todo_data["modified_by"] = None
+
                 todos_list.append(todo_data)
 
             data.append({
@@ -585,13 +605,13 @@ class SingleListView(APIView):
         sort_order = getattr(category, 'sort_order', 'created') or 'created'
 
         if sort_order == "alphabetical":
-            todos = category.todo_set.select_related('created_by', 'created_by__profile').order_by(Lower('title'))
+            todos = category.todo_set.select_related('created_by', 'created_by__profile', 'modified_by', 'modified_by__profile').order_by(Lower('title'))
         elif sort_order == "completed":
-            todos = category.todo_set.select_related('created_by', 'created_by__profile').order_by('completed', '-id')
+            todos = category.todo_set.select_related('created_by', 'created_by__profile', 'modified_by', 'modified_by__profile').order_by('completed', '-id')
         else:
-            todos = category.todo_set.select_related('created_by', 'created_by__profile').order_by('-id')
+            todos = category.todo_set.select_related('created_by', 'created_by__profile', 'modified_by', 'modified_by__profile').order_by('-id')
 
-        # Costruisci lista todos con created_by
+        # Costruisci lista todos con created_by e modified_by
         todos_list = []
         for todo in todos:
             todo_data = {
@@ -609,6 +629,16 @@ class SingleListView(APIView):
                 }
             else:
                 todo_data["created_by"] = None
+
+            # Aggiungi modified_by se presente
+            if todo.modified_by:
+                todo_data["modified_by"] = {
+                    "id": todo.modified_by.id,
+                    "username": todo.modified_by.username,
+                    "full_name": todo.modified_by.profile.get_full_name() if hasattr(todo.modified_by, 'profile') else todo.modified_by.username
+                }
+            else:
+                todo_data["modified_by"] = None
 
             todos_list.append(todo_data)
 
@@ -786,6 +816,31 @@ class TodoCreateView(APIView):
             "full_name": user.profile.get_full_name() if hasattr(user, 'profile') else user.username
         }
 
+        # Invia notifiche a tutti gli utenti con cui è condivisa la lista
+        shares = SharedList.objects.filter(list=category).select_related('shared_with', 'shared_with__profile')
+        for share in shares:
+            # Non notificare chi ha creato il todo
+            if share.shared_with != user:
+                Notification.objects.create(
+                    user=share.shared_with,
+                    type='list_modified',
+                    title='Nuovo todo aggiunto',
+                    message=f'{user.profile.get_full_name() if hasattr(user, "profile") else user.username} ha aggiunto "{title}" alla lista "{category.name}"',
+                    from_user=user,
+                    list_name=category.name
+                )
+
+        # Se l'utente che ha creato il todo non è il proprietario, notifica il proprietario
+        if category.user != user:
+            Notification.objects.create(
+                user=category.user,
+                type='list_modified',
+                title='Nuovo todo aggiunto',
+                message=f'{user.profile.get_full_name() if hasattr(user, "profile") else user.username} ha aggiunto "{title}" alla lista "{category.name}"',
+                from_user=user,
+                list_name=category.name
+            )
+
         return Response({
             "id": todo.id,
             "title": todo.title,
@@ -834,7 +889,7 @@ class TodoDeleteView(APIView):
 
     def delete(self, request, todo_id):
         user = request.user
-        todo = Todo.objects.filter(pk=todo_id).first()
+        todo = Todo.objects.filter(pk=todo_id).select_related('category').first()
         if not todo:
             return Response({"error": "Todo non trovata"}, status=404)
 
@@ -842,7 +897,38 @@ class TodoDeleteView(APIView):
         if not can_user_edit_list(user, todo.category.id):
             return Response({"error": "Permesso negato"}, status=403)
 
+        # Salva info prima di eliminare
+        todo_title = todo.title
+        category = todo.category
+
+        # Elimina il todo
         todo.delete()
+
+        # Invia notifiche a tutti gli utenti con cui è condivisa la lista
+        shares = SharedList.objects.filter(list=category).select_related('shared_with', 'shared_with__profile')
+        for share in shares:
+            # Non notificare chi ha eliminato il todo
+            if share.shared_with != user:
+                Notification.objects.create(
+                    user=share.shared_with,
+                    type='list_modified',
+                    title='Todo eliminato',
+                    message=f'{user.profile.get_full_name() if hasattr(user, "profile") else user.username} ha eliminato "{todo_title}" dalla lista "{category.name}"',
+                    from_user=user,
+                    list_name=category.name
+                )
+
+        # Se l'utente che ha eliminato il todo non è il proprietario, notifica il proprietario
+        if category.user != user:
+            Notification.objects.create(
+                user=category.user,
+                type='list_modified',
+                title='Todo eliminato',
+                message=f'{user.profile.get_full_name() if hasattr(user, "profile") else user.username} ha eliminato "{todo_title}" dalla lista "{category.name}"',
+                from_user=user,
+                list_name=category.name
+            )
+
         return Response({"success": True})
 
 ## VIEW RENAME LIST
@@ -865,7 +951,7 @@ class TodoUpdateView(APIView):
         user = request.user
         new_title = request.data.get("title")
 
-        todo = Todo.objects.filter(id=todo_id).first()
+        todo = Todo.objects.filter(id=todo_id).select_related('category').first()
         if not todo:
             return Response({"error": "ToDo not found"}, status=404)
 
@@ -873,8 +959,37 @@ class TodoUpdateView(APIView):
         if not can_user_edit_list(user, todo.category.id):
             return Response({"error": "Permesso negato"}, status=403)
 
+        old_title = todo.title
         todo.title = new_title
+        todo.modified_by = user
         todo.save()
+
+        # Invia notifiche a tutti gli utenti con cui è condivisa la lista
+        category = todo.category
+        shares = SharedList.objects.filter(list=category).select_related('shared_with', 'shared_with__profile')
+        for share in shares:
+            # Non notificare chi ha modificato il todo
+            if share.shared_with != user:
+                Notification.objects.create(
+                    user=share.shared_with,
+                    type='list_modified',
+                    title='Todo modificato',
+                    message=f'{user.profile.get_full_name() if hasattr(user, "profile") else user.username} ha modificato "{old_title}" in "{new_title}" nella lista "{category.name}"',
+                    from_user=user,
+                    list_name=category.name
+                )
+
+        # Se l'utente che ha modificato il todo non è il proprietario, notifica il proprietario
+        if category.user != user:
+            Notification.objects.create(
+                user=category.user,
+                type='list_modified',
+                title='Todo modificato',
+                message=f'{user.profile.get_full_name() if hasattr(user, "profile") else user.username} ha modificato "{old_title}" in "{new_title}" nella lista "{category.name}"',
+                from_user=user,
+                list_name=category.name
+            )
+
         return Response({"success": True, "title": todo.title})
 
 ## VIEW MOVE TODO TO ANOTHER LIST
