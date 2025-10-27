@@ -35,6 +35,7 @@ from datetime import datetime, timedelta
 import logging
 import json
 from todoproject.firebase_config import send_push_notification
+from todoproject.email_service import send_verification_email, send_password_reset_email
 
 logger = logging.getLogger(__name__)
 
@@ -192,35 +193,36 @@ class RegisterView(View):
         if User.objects.filter(email=email).exists():
             return JsonResponse({"error": "Email già registrata"}, status=400)
 
-        # ✅ Crea utente non attivo
+        # ✅ Crea utente non attivo (deve verificare email)
         user = User.objects.create(
             username=username,
             email=email,
             password=make_password(password),
-            is_active=True,
+            is_active=False,  # ✅ Utente non attivo finché non verifica email
         )
 
         # ✅ Invia email di verifica
-        # uid = urlsafe_base64_encode(force_bytes(user.pk))
-        # token = default_token_generator.make_token(user)
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        token = default_token_generator.make_token(user)
 
-        # verify_url = f"https://todowebapp-frontend-reactts-stml.vercel.app/verify-email/{uid}/{token}"
+        verify_url = f"https://todowebapp-frontend-reactts-stml.vercel.app/verify-email/{uid}/{token}"
 
-        # context = {
-        #    "title": "Verifica la tua email",
-        #    "message": "Clicca il pulsante in basso per confermare la tua email.",
-        #    "action_text": "Conferma email",
-        #    "action_url": verify_url,
-        #    "year": datetime.now().year,
-        # }
+        context = {
+            "title": "Verifica la tua email",
+            "message": "Clicca il pulsante in basso per confermare la tua email.",
+            "action_text": "Conferma email",
+            "action_url": verify_url,
+            "year": datetime.now().year,
+        }
 
-        # html_content = render_to_string("emails/email_verifica.html", context)
-        # print("✅ Email di verifica sarebbe stata inviata a:", user.email)
+        html_content = render_to_string("emails/email_verifica.html", context)
 
-        # if not send_verification_email(user.email, "Verifica la tua email", html_content):
-        #    return JsonResponse({"error": "Registrazione ok, ma errore invio email"}, status=500)
+        if not send_verification_email(user.email, "Verifica la tua email", html_content):
+            # Se l'invio email fallisce, elimina l'utente creato
+            user.delete()
+            return JsonResponse({"error": "Errore invio email di verifica. Riprova."}, status=500)
 
-        return JsonResponse({"message": "register success"})
+        return JsonResponse({"message": "Registrazione completata! Controlla la tua email per verificare l'account."})
 
 ## VIEW DELETE ACCOUNT
 class DeleteAccountView(APIView):
@@ -252,14 +254,10 @@ class SendEmailVerificationView(APIView):
 
         html_content = render_to_string("emails/email_verifica.html", context)
 
-        send_mail(
-            subject="Verifica la tua email",
-            message="Clicca sul link per verificare la tua email.",
-            from_email='"ToDoWebApp Bale" <todoapp@webdesign-vito-luigi.it>',
-            recipient_list=[user.email],
-            html_message=html_content,
-        )
-        return Response({"message": "Verification email sent"})
+        if not send_verification_email(user.email, "Verifica la tua email - ToDoApp", html_content):
+            return Response({"error": "Errore invio email. Riprova più tardi."}, status=500)
+
+        return Response({"message": "Email di verifica inviata! Controlla la tua casella di posta."})
 
 ## VIEW CONFIRM EMAIL
 class ConfirmEmailView(View):
@@ -1160,14 +1158,15 @@ class SendResetPasswordEmailView(LoginRequiredMixin, View):
 
         html_content = render_to_string("emails/email.html", context)
 
-        # Usa la tua funzione custom per mandare la mail via Brevo API
-        send_verification_email(
+        # Usa la nuova funzione per mandare la mail via Brevo API
+        if not send_password_reset_email(
             to_email=user.email,
-            subject="Verifica la tua email",
+            subject="Cambio password - ToDoApp",
             html_content=html_content
-        )
+        ):
+            return JsonResponse({"error": "Errore invio email. Riprova più tardi."}, status=500)
 
-        return JsonResponse({"message": "Password reset email sent"})
+        return JsonResponse({"message": "Email di reset password inviata! Controlla la tua casella di posta."})
 
 @method_decorator(csrf_exempt, name='dispatch')
 class ResetPasswordConfirmView(View):
