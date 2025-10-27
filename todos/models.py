@@ -29,6 +29,7 @@ class Todo(models.Model):
     completed = models.BooleanField(default=False)
     category = models.ForeignKey(Category, on_delete=models.CASCADE, null=True, blank=True)
     order = models.PositiveIntegerField(default=0)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_todos')
 
 
 class Profile(models.Model):
