@@ -9,10 +9,16 @@ import os
 
 logger = logging.getLogger(__name__)
 
-# ⚠️ IMPORTANTE: Per abilitare l'invio email, imposta la variabile d'ambiente BREVO_API_KEY
-# Per ottenerla: https://app.brevo.com/settings/keys/api
-# Esempio: export BREVO_API_KEY="xkeysib-tua-chiave-qui"
-BREVO_API_KEY = os.environ.get('BREVO_API_KEY', '')
+# ⚠️ IMPORTANTE: Per configurare Brevo, crea il file 'brevo_key.py' con la tua chiave API
+# Copia brevo_key.example.py e rinominalo in brevo_key.py, poi inserisci la chiave vera
+# Ottienila da: https://app.brevo.com/settings/keys/api
+
+# Prova a importare la chiave dal file locale (se esiste)
+try:
+    from todoproject.brevo_key import BREVO_API_KEY
+except ImportError:
+    # Fallback alla variabile d'ambiente
+    BREVO_API_KEY = os.environ.get('BREVO_API_KEY', '')
 
 BREVO_API_URL = "https://api.brevo.com/v3/smtp/email"
 
