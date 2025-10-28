@@ -1242,6 +1242,58 @@ class TestEmailConfigView(APIView):
         })
 
 
+## VIEW TEST SEND EMAIL
+class TestSendEmailView(APIView):
+    """Prova effettivamente a inviare un'email di test per verificare Brevo"""
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        import requests
+        from todoproject.email_service import BREVO_API_KEY, EMAIL_ENABLED, BREVO_API_URL
+
+        email = request.data.get('email')
+        if not email:
+            return Response({"error": "Inserisci un'email nel body: {\"email\": \"tua@email.com\"}"}, status=400)
+
+        if not EMAIL_ENABLED:
+            return Response({
+                "error": "Brevo non è configurato. Controlla /api/test-email-config/"
+            }, status=400)
+
+        # Prova a inviare email
+        headers = {
+            "accept": "application/json",
+            "api-key": BREVO_API_KEY,
+            "content-type": "application/json"
+        }
+
+        payload = {
+            "sender": {
+                "name": "ToDoApp Test",
+                "email": "todoapp@webdesign-vito-luigi.it"
+            },
+            "to": [{"email": email}],
+            "subject": "Test Email - ToDoApp",
+            "htmlContent": "<html><body><h1>Email di Test</h1><p>Se ricevi questa email, Brevo funziona correttamente! ✅</p></body></html>"
+        }
+
+        try:
+            response = requests.post(BREVO_API_URL, json=payload, headers=headers)
+
+            return Response({
+                "status_code": response.status_code,
+                "success": response.status_code in [200, 201],
+                "response": response.json() if response.content else None,
+                "message": "✅ Email inviata!" if response.status_code in [200, 201] else "❌ Errore nell'invio"
+            })
+        except Exception as e:
+            return Response({
+                "error": str(e),
+                "message": "❌ Eccezione durante l'invio"
+            }, status=500)
+
+
+
 ### NOTIFICATIONS SYSTEM VIEW
 
 ## VIEW SAVE FCM TOKEN
