@@ -1273,7 +1273,7 @@ class TestSendEmailView(APIView):
         payload = {
             "sender": {
                 "name": "ToDoApp Test",
-                "email": "todoapp@webdesign-vito-luigi.it"
+                "email": "luigibalestrucci52@gmail.com"
             },
             "to": [{"email": email}],
             "subject": "Test Email - ToDoApp",
@@ -1328,7 +1328,7 @@ class TestSendEmailView(APIView):
         payload = {
             "sender": {
                 "name": "ToDoApp Test",
-                "email": "todoapp@webdesign-vito-luigi.it"
+                "email": "luigibalestrucci52@gmail.com"
             },
             "to": [{"email": email}],
             "subject": "Test Email - ToDoApp",

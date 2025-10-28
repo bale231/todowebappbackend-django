@@ -54,7 +54,7 @@ def send_verification_email(to_email, subject, html_content):
     payload = {
         "sender": {
             "name": "ToDoApp",
-            "email": "todoapp@webdesign-vito-luigi.it"
+            "email": "luigibalestrucci52@gmail.com"
         },
         "to": [
             {
