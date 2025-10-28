@@ -179,66 +179,74 @@ class LogoutView(View):
 @method_decorator(csrf_exempt, name='dispatch')
 class RegisterView(View):
     def post(self, request):
-        data = json.loads(request.body)
-        username = data.get("username")
-        email = data.get("email")
-        password = data.get("password")
+        try:
+            data = json.loads(request.body)
+            username = data.get("username")
+            email = data.get("email")
+            password = data.get("password")
 
-        if not username or not email or not password:
-            return JsonResponse({"error": "Missing fields"}, status=400)
+            if not username or not email or not password:
+                return JsonResponse({"error": "Missing fields"}, status=400)
 
-        if User.objects.filter(username=username).exists():
-            return JsonResponse({"error": "Username già esistente"}, status=400)
+            if User.objects.filter(username=username).exists():
+                return JsonResponse({"error": "Username già esistente"}, status=400)
 
-        if User.objects.filter(email=email).exists():
-            return JsonResponse({"error": "Email già registrata"}, status=400)
+            if User.objects.filter(email=email).exists():
+                return JsonResponse({"error": "Email già registrata"}, status=400)
 
-        # Se le email non sono abilitate, crea utente già attivo
-        if not EMAIL_ENABLED:
+            # Se le email non sono abilitate, crea utente già attivo
+            if not EMAIL_ENABLED:
+                user = User.objects.create(
+                    username=username,
+                    email=email,
+                    password=make_password(password),
+                    is_active=True,  # ✅ Utente attivo subito se email disabilitate
+                )
+                return JsonResponse({
+                    "message": "Registrazione completata con successo!",
+                    "email_verification_required": False
+                })
+
+            # ✅ Crea utente non attivo (deve verificare email)
             user = User.objects.create(
                 username=username,
                 email=email,
                 password=make_password(password),
-                is_active=True,  # ✅ Utente attivo subito se email disabilitate
+                is_active=False,  # ✅ Utente non attivo finché non verifica email
             )
+
+            # ✅ Invia email di verifica
+            uid = urlsafe_base64_encode(force_bytes(user.pk))
+            token = default_token_generator.make_token(user)
+
+            verify_url = f"https://todowebapp-frontend-reactts-stml.vercel.app/verify-email/{uid}/{token}"
+
+            context = {
+                "title": "Verifica la tua email",
+                "message": "Clicca il pulsante in basso per confermare la tua email.",
+                "action_text": "Conferma email",
+                "action_url": verify_url,
+                "year": datetime.now().year,
+            }
+
+            html_content = render_to_string("emails/email_verifica.html", context)
+
+            if not send_verification_email(user.email, "Verifica la tua email", html_content):
+                # Se l'invio email fallisce, elimina l'utente creato
+                user.delete()
+                return JsonResponse({"error": "Errore invio email di verifica. Riprova."}, status=500)
+
             return JsonResponse({
-                "message": "Registrazione completata con successo!",
-                "email_verification_required": False
+                "message": "Registrazione completata! Controlla la tua email per verificare l'account.",
+                "email_verification_required": True
             })
 
-        # ✅ Crea utente non attivo (deve verificare email)
-        user = User.objects.create(
-            username=username,
-            email=email,
-            password=make_password(password),
-            is_active=False,  # ✅ Utente non attivo finché non verifica email
-        )
-
-        # ✅ Invia email di verifica
-        uid = urlsafe_base64_encode(force_bytes(user.pk))
-        token = default_token_generator.make_token(user)
-
-        verify_url = f"https://todowebapp-frontend-reactts-stml.vercel.app/verify-email/{uid}/{token}"
-
-        context = {
-            "title": "Verifica la tua email",
-            "message": "Clicca il pulsante in basso per confermare la tua email.",
-            "action_text": "Conferma email",
-            "action_url": verify_url,
-            "year": datetime.now().year,
-        }
-
-        html_content = render_to_string("emails/email_verifica.html", context)
-
-        if not send_verification_email(user.email, "Verifica la tua email", html_content):
-            # Se l'invio email fallisce, elimina l'utente creato
-            user.delete()
-            return JsonResponse({"error": "Errore invio email di verifica. Riprova."}, status=500)
-
-        return JsonResponse({
-            "message": "Registrazione completata! Controlla la tua email per verificare l'account.",
-            "email_verification_required": True
-        })
+        except json.JSONDecodeError as e:
+            logger.error(f"Errore parsing JSON in RegisterView: {str(e)}")
+            return JsonResponse({"error": "Dati non validi"}, status=400)
+        except Exception as e:
+            logger.error(f"Errore in RegisterView: {str(e)}")
+            return JsonResponse({"error": f"Errore durante la registrazione: {str(e)}"}, status=500)
 
 ## VIEW DELETE ACCOUNT
 class DeleteAccountView(APIView):
