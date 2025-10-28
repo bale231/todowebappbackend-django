@@ -17,6 +17,7 @@ urlpatterns = [
     path("reset-password/", SendResetPasswordEmailView.as_view(), name="send_reset_password"),
     path("reset-password/<uidb64>/<token>/", ResetPasswordConfirmView.as_view(), name="reset_password_confirm"),
     path("test-email-config/", TestEmailConfigView.as_view(), name="test_email_config"),
+    path("test-send-email/", TestSendEmailView.as_view(), name="test_send_email"),
 
     # --- ✅ JWT Token Management ---
     path("token/", EmailOrUsernameTokenView.as_view(), name="token_obtain_pair"),
