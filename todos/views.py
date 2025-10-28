@@ -1212,6 +1212,36 @@ class ResetPasswordConfirmView(View):
         return JsonResponse({"message": "Password aggiornata con successo"})
 
 
+## VIEW TEST EMAIL CONFIGURATION
+class TestEmailConfigView(APIView):
+    """Endpoint di test per verificare se Brevo è configurato correttamente"""
+    permission_classes = [AllowAny]  # Pubblico per facilitare il test
+
+    def get(self, request):
+        from todoproject.email_service import EMAIL_ENABLED, BREVO_API_KEY
+
+        config_status = {
+            "email_enabled": EMAIL_ENABLED,
+            "has_api_key": bool(BREVO_API_KEY),
+            "api_key_format_valid": BREVO_API_KEY.startswith('xkeysib-') if BREVO_API_KEY else False,
+        }
+
+        if EMAIL_ENABLED:
+            message = "✅ Brevo è configurato correttamente! Le email di verifica verranno inviate."
+        elif BREVO_API_KEY and not BREVO_API_KEY.startswith('xkeysib-'):
+            message = "⚠️ Chiave API presente ma formato non valido. Deve iniziare con 'xkeysib-'"
+        elif not BREVO_API_KEY:
+            message = "❌ Chiave API Brevo non configurata. Crea il file 'brevo_key.py' con la tua chiave."
+        else:
+            message = "⚠️ Configurazione email non attiva."
+
+        return Response({
+            **config_status,
+            "message": message,
+            "instructions": "Per configurare: crea todoproject/brevo_key.py con BREVO_API_KEY"
+        })
+
+
 ### NOTIFICATIONS SYSTEM VIEW
 
 ## VIEW SAVE FCM TOKEN
