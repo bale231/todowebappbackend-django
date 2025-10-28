@@ -1247,13 +1247,16 @@ class TestSendEmailView(APIView):
     """Prova effettivamente a inviare un'email di test per verificare Brevo"""
     permission_classes = [AllowAny]
 
-    def post(self, request):
+    def get(self, request):
+        """Usa GET con parametro ?email=tuaemail@example.com"""
         import requests
         from todoproject.email_service import BREVO_API_KEY, EMAIL_ENABLED, BREVO_API_URL
 
-        email = request.data.get('email')
+        email = request.GET.get('email')
         if not email:
-            return Response({"error": "Inserisci un'email nel body: {\"email\": \"tua@email.com\"}"}, status=400)
+            return Response({
+                "error": "Inserisci l'email come parametro: /api/test-send-email/?email=tuaemail@example.com"
+            }, status=400)
 
         if not EMAIL_ENABLED:
             return Response({
@@ -1284,7 +1287,63 @@ class TestSendEmailView(APIView):
                 "status_code": response.status_code,
                 "success": response.status_code in [200, 201],
                 "response": response.json() if response.content else None,
-                "message": "✅ Email inviata!" if response.status_code in [200, 201] else "❌ Errore nell'invio"
+                "message": "✅ Email inviata!" if response.status_code in [200, 201] else "❌ Errore nell'invio",
+                "sent_to": email
+            })
+        except Exception as e:
+            return Response({
+                "error": str(e),
+                "message": "❌ Eccezione durante l'invio"
+            }, status=500)
+
+    def post(self, request):
+        import requests
+        from todoproject.email_service import BREVO_API_KEY, EMAIL_ENABLED, BREVO_API_URL
+
+        # Debug: mostra cosa arriva
+        logger.info(f"Request data: {request.data}")
+        logger.info(f"Request body: {request.body}")
+
+        email = request.data.get('email') or request.POST.get('email')
+        if not email:
+            return Response({
+                "error": "Inserisci un'email nel body: {\"email\": \"tua@email.com\"}",
+                "debug_data_received": str(request.data),
+                "debug_post_received": str(request.POST),
+                "hint": "Oppure usa GET: /api/test-send-email/?email=tuaemail@example.com"
+            }, status=400)
+
+        if not EMAIL_ENABLED:
+            return Response({
+                "error": "Brevo non è configurato. Controlla /api/test-email-config/"
+            }, status=400)
+
+        # Prova a inviare email
+        headers = {
+            "accept": "application/json",
+            "api-key": BREVO_API_KEY,
+            "content-type": "application/json"
+        }
+
+        payload = {
+            "sender": {
+                "name": "ToDoApp Test",
+                "email": "todoapp@webdesign-vito-luigi.it"
+            },
+            "to": [{"email": email}],
+            "subject": "Test Email - ToDoApp",
+            "htmlContent": "<html><body><h1>Email di Test</h1><p>Se ricevi questa email, Brevo funziona correttamente! ✅</p></body></html>"
+        }
+
+        try:
+            response = requests.post(BREVO_API_URL, json=payload, headers=headers)
+
+            return Response({
+                "status_code": response.status_code,
+                "success": response.status_code in [200, 201],
+                "response": response.json() if response.content else None,
+                "message": "✅ Email inviata!" if response.status_code in [200, 201] else "❌ Errore nell'invio",
+                "sent_to": email
             })
         except Exception as e:
             return Response({
