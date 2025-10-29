@@ -141,17 +141,27 @@ class LoginView(APIView):
             else:
                 candidates = list(User.objects.filter(email__iexact=identifier))
 
-        user = None
+        # ✅ Prima verifica se l'utente esiste e controlla la password manualmente
+        found_user = None
         for u in candidates:
-            user = authenticate(username=u.username, password=password)
-            if user:
+            if u.check_password(password):
+                found_user = u
                 break
 
-        if user is None:
+        if found_user is None:
             return Response({"message": "Invalid credentials"}, status=401)
 
-        if not user.is_active:
-            return Response({"message": "email not verified"}, status=403)
+        # ✅ Se l'utente esiste ma non è attivo, ritorna messaggio specifico
+        if not found_user.is_active:
+            return Response({
+                "message": "email_not_verified",
+                "detail": "Devi confermare la tua email prima di accedere. Controlla la tua casella di posta."
+            }, status=403)
+
+        # ✅ Ora usa authenticate() per l'utente attivo
+        user = authenticate(username=found_user.username, password=password)
+        if user is None:
+            return Response({"message": "Invalid credentials"}, status=401)
 
         # Crea token con durata basata su remember_me
         refresh = RefreshToken.for_user(user)
