@@ -289,18 +289,29 @@ class ConfirmEmailView(View):
         try:
             uid_decoded = urlsafe_base64_decode(uidb64).decode()
             user = User.objects.get(pk=uid_decoded)
-        except (User.DoesNotExist, ValueError, TypeError):
-            return JsonResponse({"verified": False}, status=400)
+            logger.info(f"✅ Email verification: User found - {user.username}, is_active={user.is_active}")
+        except (User.DoesNotExist, ValueError, TypeError) as e:
+            logger.error(f"❌ Email verification failed: Invalid UID - {str(e)}")
+            return JsonResponse({
+                "verified": False,
+                "error": "Link non valido. Richiedi un nuovo link di verifica."
+            }, status=400)
 
         if user.is_active:
-            return JsonResponse({"verified": True})
+            logger.info(f"✅ User {user.username} already active")
+            return JsonResponse({"verified": True, "message": "Email già verificata!"})
 
         if default_token_generator.check_token(user, token):
             user.is_active = True
             user.save()
-            return JsonResponse({"verified": True})
+            logger.info(f"✅ Email verified successfully for user {user.username}")
+            return JsonResponse({"verified": True, "message": "Email verificata con successo!"})
 
-        return JsonResponse({"verified": False}, status=400)
+        logger.error(f"❌ Invalid token for user {user.username}")
+        return JsonResponse({
+            "verified": False,
+            "error": "Token non valido o scaduto. Il link potrebbe essere già stato usato o essere scaduto."
+        }, status=400)
 
 ### VIEW TODOS
 
