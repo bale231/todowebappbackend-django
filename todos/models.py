@@ -2,6 +2,9 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.contrib.auth.models import User
 from django.db import models
+from django.utils import timezone
+from datetime import timedelta
+import uuid
 
 class ListCategory(models.Model):
     """Categoria per raggruppare le liste"""
@@ -175,6 +178,32 @@ class SharedCategory(models.Model):
 
     def __str__(self):
         return f"{self.category.name} condivisa da {self.shared_by.username} con {self.shared_with.username}"
+
+
+class PasswordResetToken(models.Model):
+    """Token per il reset della password"""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='password_reset_tokens')
+    token = models.UUIDField(default=uuid.uuid4, unique=True)
+    uid = models.CharField(max_length=100)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used = models.BooleanField(default=False)
+
+    def save(self, *args, **kwargs):
+        if not self.expires_at:
+            # Token valido per 1 ora
+            self.expires_at = timezone.now() + timedelta(hours=1)
+        super().save(*args, **kwargs)
+
+    def is_valid(self):
+        """Verifica se il token è ancora valido"""
+        return not self.used and timezone.now() < self.expires_at
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Reset token per {self.user.username} - {'Usato' if self.used else 'Valido' if self.is_valid() else 'Scaduto'}"
 
 
 # Segnale per creare automaticamente il profilo quando viene creato un nuovo utente

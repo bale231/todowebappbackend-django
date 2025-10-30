@@ -15,7 +15,7 @@ from django.shortcuts import get_object_or_404
 from django.template.loader import render_to_string
 from django.db.models.functions import Lower
 from django.db.models import Q
-from .models import Todo, Category, Profile, Notification, FriendRequest, Friendship, ListCategory, SharedList, SharedCategory
+from .models import Todo, Category, Profile, Notification, FriendRequest, Friendship, ListCategory, SharedList, SharedCategory, PasswordResetToken
 from .serializers import EmailOrUsernameTokenObtainPairSerializer, UserProfileSerializer, FriendRequestSerializer, FriendshipSerializer
 
 
@@ -1178,59 +1178,118 @@ class UpdateProfileJWTView(APIView):
 
 ## VIEW REQUEST PASSWORD RESET
 @method_decorator(csrf_exempt, name='dispatch')
-class SendResetPasswordEmailView(LoginRequiredMixin, View):
+class SendResetPasswordEmailView(View):
+    """
+    Endpoint per richiedere il reset della password
+    POST /api/password-reset/request/
+    Body: { "email": "user@example.com" }
+    """
     def post(self, request):
-        user = request.user
+        try:
+            data = json.loads(request.body)
+            email = data.get('email')
+        except json.JSONDecodeError:
+            return JsonResponse({'message': 'Dati non validi'}, status=400)
+
+        if not email:
+            return JsonResponse({'message': 'Email richiesta'}, status=400)
+
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            # Per sicurezza, non rivelare se l'email esiste o no
+            return JsonResponse({
+                'message': 'Se l\'email esiste nel sistema, riceverai un link per il reset della password'
+            }, status=200)
+
+        # Crea il token di reset
         uid = urlsafe_base64_encode(force_bytes(user.pk))
-        token = default_token_generator.make_token(user)
+        reset_token = PasswordResetToken.objects.create(
+            user=user,
+            uid=uid
+        )
 
-        frontend_url = f"https://todowebapp-frontend-reactts-stml.vercel.app/reset-password/{uid}/{token}"
+        # Costruisci il link di reset
+        reset_url = f"https://todowebapp-frontend-reactts-stml.vercel.app/reset-password/{uid}/{reset_token.token}"
 
-        # Dentro la tua view
-        subject = "Cambio password"
-        from_email='"ToDoWebApp" <todoapp@webdesign-vito-luigi.it>',
-        to_email = user.email
-
-        # HTML content personalizzato
+        # Prepara il contenuto HTML dell'email
         context = {
             "username": user.username,
-            "action_url": frontend_url,
+            "action_url": reset_url,
             "action_text": "Cambia la password",
             "title": "Hai richiesto di cambiare la password?",
-            "message": "Se non sei stato tu a farlo, ignora questa email.",
+            "message": "Questo link è valido per 1 ora. Se non hai richiesto il reset, ignora questa email.",
             "year": datetime.now().year
         }
 
         html_content = render_to_string("emails/email.html", context)
 
-        # Usa la nuova funzione per mandare la mail via Brevo API
+        # Invia l'email tramite Brevo
         if not send_password_reset_email(
-            to_email=user.email,
-            subject="Cambio password - ToDoApp",
+            to_email=email,
+            subject="Reset Password - ToDoApp",
             html_content=html_content
         ):
             return JsonResponse({"error": "Errore invio email. Riprova più tardi."}, status=500)
 
-        return JsonResponse({"message": "Email di reset password inviata! Controlla la tua casella di posta."})
+        return JsonResponse({
+            'message': 'Email di reset password inviata! Controlla la tua casella di posta.'
+        }, status=200)
+
 
 @method_decorator(csrf_exempt, name='dispatch')
 class ResetPasswordConfirmView(View):
+    """
+    Endpoint per confermare il reset e salvare la nuova password
+    POST /api/password-reset/confirm/<uid>/<token>/
+    Body: { "password": "newpassword123" }
+    """
     def post(self, request, uidb64, token):
-        data = json.loads(request.body)
-        new_password = data.get("password")
+        try:
+            data = json.loads(request.body)
+            new_password = data.get('password')
+        except json.JSONDecodeError:
+            return JsonResponse({'message': 'Dati non validi'}, status=400)
+
+        if not new_password:
+            return JsonResponse({'message': 'Nuova password richiesta'}, status=400)
 
         try:
-            uid = urlsafe_base64_decode(uidb64).decode()
-            user = User.objects.get(pk=uid)
-        except (User.DoesNotExist, ValueError, TypeError):
-            return JsonResponse({"error": "Invalid UID"}, status=400)
+            # Decodifica l'uid
+            user_id = urlsafe_base64_decode(uidb64).decode()
+            user = User.objects.get(pk=user_id)
 
-        if not default_token_generator.check_token(user, token):
-            return JsonResponse({"error": "Token non valido o scaduto"}, status=400)
+            # Verifica il token UUID
+            reset_token = PasswordResetToken.objects.get(
+                user=user,
+                token=token,
+                uid=uidb64
+            )
 
-        user.password = make_password(new_password)
-        user.save()
-        return JsonResponse({"message": "Password aggiornata con successo"})
+            if not reset_token.is_valid():
+                return JsonResponse({
+                    'message': 'Token scaduto o già utilizzato. Richiedi un nuovo link di reset.'
+                }, status=400)
+
+            # Aggiorna la password
+            user.set_password(new_password)
+            user.save()
+
+            # Marca il token come usato
+            reset_token.used = True
+            reset_token.save()
+
+            logger.info(f"✅ Password resettata con successo per {user.username}")
+
+            return JsonResponse({
+                'message': 'Password resettata con successo! Ora puoi effettuare il login.'
+            }, status=200)
+
+        except (User.DoesNotExist, PasswordResetToken.DoesNotExist, ValueError, TypeError) as e:
+            logger.error(f"❌ Errore reset password: {str(e)}")
+            return JsonResponse({
+                'message': 'Link non valido o scaduto. Richiedi un nuovo link di reset.'
+            }, status=400)
 
 
 ## VIEW TEST EMAIL CONFIGURATION
