@@ -1245,28 +1245,41 @@ class ResetPasswordConfirmView(View):
     Body: { "password": "newpassword123" }
     """
     def post(self, request, uidb64, token):
+        logger.info(f"🔍 Reset password confirm richiesto - UID: {uidb64}, Token: {token}")
+        logger.info(f"🔍 Request body: {request.body}")
+
         try:
             data = json.loads(request.body)
+            logger.info(f"🔍 Dati parsati: {data}")
             new_password = data.get('password')
-        except json.JSONDecodeError:
+            logger.info(f"🔍 Password ricevuta: {'Sì' if new_password else 'No'}")
+        except json.JSONDecodeError as e:
+            logger.error(f"❌ Errore parsing JSON: {str(e)}")
             return JsonResponse({'message': 'Dati non validi'}, status=400)
 
         if not new_password:
+            logger.error("❌ Password mancante nel body")
             return JsonResponse({'message': 'Nuova password richiesta'}, status=400)
 
         try:
             # Decodifica l'uid
             user_id = urlsafe_base64_decode(uidb64).decode()
+            logger.info(f"🔍 User ID decodificato: {user_id}")
+
             user = User.objects.get(pk=user_id)
+            logger.info(f"🔍 User trovato: {user.username}")
 
             # Verifica il token UUID
+            logger.info(f"🔍 Cerco token UUID per user={user.username}, token={token}, uid={uidb64}")
             reset_token = PasswordResetToken.objects.get(
                 user=user,
                 token=token,
                 uid=uidb64
             )
+            logger.info(f"🔍 Token trovato - Used: {reset_token.used}, Expires: {reset_token.expires_at}")
 
             if not reset_token.is_valid():
+                logger.warning(f"⚠️ Token non valido - Used: {reset_token.used}, Expired: {timezone.now() >= reset_token.expires_at}")
                 return JsonResponse({
                     'message': 'Token scaduto o già utilizzato. Richiedi un nuovo link di reset.'
                 }, status=400)
@@ -1285,8 +1298,18 @@ class ResetPasswordConfirmView(View):
                 'message': 'Password resettata con successo! Ora puoi effettuare il login.'
             }, status=200)
 
-        except (User.DoesNotExist, PasswordResetToken.DoesNotExist, ValueError, TypeError) as e:
-            logger.error(f"❌ Errore reset password: {str(e)}")
+        except User.DoesNotExist:
+            logger.error(f"❌ User non trovato per ID: {uidb64}")
+            return JsonResponse({
+                'message': 'Link non valido o scaduto. Richiedi un nuovo link di reset.'
+            }, status=400)
+        except PasswordResetToken.DoesNotExist:
+            logger.error(f"❌ Token non trovato - User: {user.username if 'user' in locals() else 'unknown'}, Token: {token}")
+            return JsonResponse({
+                'message': 'Link non valido o scaduto. Richiedi un nuovo link di reset.'
+            }, status=400)
+        except (ValueError, TypeError) as e:
+            logger.error(f"❌ Errore decodifica o tipo: {str(e)}")
             return JsonResponse({
                 'message': 'Link non valido o scaduto. Richiedi un nuovo link di reset.'
             }, status=400)
