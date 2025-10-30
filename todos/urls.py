@@ -14,8 +14,13 @@ urlpatterns = [
     path("update-theme/", UpdateThemeView.as_view(), name="update_theme"),
     path("send-verification-email/", SendEmailVerificationView.as_view(), name="send_verification_email"),
     path("verify-email/<uidb64>/<token>/", ConfirmEmailView.as_view(), name="verify_email"),
+
+    # Password Reset (doppi endpoint per compatibilità)
     path("reset-password/", SendResetPasswordEmailView.as_view(), name="send_reset_password"),
     path("reset-password/<uidb64>/<token>/", ResetPasswordConfirmView.as_view(), name="reset_password_confirm"),
+    path("password-reset/request/", SendResetPasswordEmailView.as_view(), name="password_reset_request"),  # Alias
+    path("password-reset/confirm/<uidb64>/<token>/", ResetPasswordConfirmView.as_view(), name="password_reset_confirm_alias"),  # Alias
+
     path("test-email-config/", TestEmailConfigView.as_view(), name="test_email_config"),
     path("test-send-email/", TestSendEmailView.as_view(), name="test_send_email"),
 
