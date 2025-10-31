@@ -126,7 +126,7 @@ class LoginView(APIView):
                     request.content_type, list(data.keys()), identifier, remember_me)
 
         if not identifier or not password:
-            return Response({"message": "Missing credentials"}, status=400)
+            return Response({"message": "Credenziali mancanti"}, status=400)
 
         candidates = []
         if "@" in identifier:
@@ -149,7 +149,7 @@ class LoginView(APIView):
                 break
 
         if found_user is None:
-            return Response({"message": "Invalid credentials"}, status=401)
+            return Response({"message": "Credenziali non valide"}, status=401)
 
         # ✅ Se l'utente esiste ma non è attivo, ritorna messaggio specifico
         if not found_user.is_active:
@@ -161,7 +161,7 @@ class LoginView(APIView):
         # ✅ Ora usa authenticate() per l'utente attivo
         user = authenticate(username=found_user.username, password=password)
         if user is None:
-            return Response({"message": "Invalid credentials"}, status=401)
+            return Response({"message": "Credenziali non valide"}, status=401)
 
         # Crea token con durata basata su remember_me
         refresh = RefreshToken.for_user(user)
@@ -196,7 +196,7 @@ class RegisterView(View):
             password = data.get("password")
 
             if not username or not email or not password:
-                return JsonResponse({"error": "Missing fields"}, status=400)
+                return JsonResponse({"error": "Campi mancanti"}, status=400)
 
             if User.objects.filter(username=username).exists():
                 return JsonResponse({"error": "Username già esistente"}, status=400)
@@ -637,7 +637,7 @@ class SingleListView(APIView):
         if not category:
             shared = SharedList.objects.filter(list_id=list_id, shared_with=user).select_related('list', 'shared_by').first()
             if not shared:
-                return Response({"error": "Not found"}, status=404)
+                return Response({"error": "Non trovata"}, status=404)
             category = shared.list
             is_owner = False
             can_edit = shared.can_edit
@@ -752,7 +752,7 @@ class SingleListView(APIView):
             category.delete()
             return Response({"message": "Lista eliminata"})
         except Category.DoesNotExist:
-            return Response({"error": "Not found o permesso negato"}, status=404)
+            return Response({"error": "Non trovata o permesso negato"}, status=404)
 
 ## VIEW UPDATE CATEGORY ORDER
 class UpdateListsOrderingView(APIView):
@@ -1034,7 +1034,7 @@ class TodoUpdateView(APIView):
 
         todo = Todo.objects.filter(id=todo_id).select_related('category').first()
         if not todo:
-            return Response({"error": "ToDo not found"}, status=404)
+            return Response({"error": "Todo non trovata"}, status=404)
 
         # Verifica permessi sulla lista
         if not can_user_edit_list(user, todo.category.id):
@@ -1131,8 +1131,8 @@ class UpdateThemeView(APIView):
         if profile:
             profile.theme = theme
             profile.save()
-            return Response({"message": "Theme updated"})
-        return Response({"error": "Profile not found"}, status=404)
+            return Response({"message": "Tema aggiornato"})
+        return Response({"error": "Profilo non trovato"}, status=404)
 
 ## VIEW UPDATE PROFILE
 class UpdateProfileJWTView(APIView):
@@ -1174,7 +1174,7 @@ class UpdateProfileJWTView(APIView):
                 profile.profile_picture = profile_picture
             profile.save()
 
-        return Response({"message": "Profile updated"})
+        return Response({"message": "Profilo aggiornato"})
 
 ## VIEW REQUEST PASSWORD RESET
 @method_decorator(csrf_exempt, name='dispatch')
@@ -1227,10 +1227,10 @@ class SendResetPasswordEmailView(View):
         # Invia l'email tramite Brevo
         if not send_password_reset_email(
             to_email=email,
-            subject="Reset Password - ToDoApp",
+            subject="Reimposta Password - ToDoApp",
             html_content=html_content
         ):
-            return JsonResponse({"error": "Errore invio email. Riprova più tardi."}, status=500)
+            return JsonResponse({"message": "Errore invio email. Riprova più tardi."}, status=500)
 
         return JsonResponse({
             'message': 'Email di reset password inviata! Controlla la tua casella di posta.'
@@ -1516,7 +1516,7 @@ class NotificationMarkReadView(APIView):
             notif.save()
             return Response({"success": True})
         except Notification.DoesNotExist:
-            return Response({"error": "Notification not found"}, status=404)
+            return Response({"error": "Notifica non trovata"}, status=404)
 
 ## VIEW MARK ALL AS READ
 class NotificationMarkAllReadView(APIView):
@@ -1536,7 +1536,7 @@ class NotificationDeleteView(APIView):
             notif.delete()
             return Response({"success": True})
         except Notification.DoesNotExist:
-            return Response({"error": "Notification not found"}, status=404)
+            return Response({"error": "Notifica non trovata"}, status=404)
 
 ## VIEW UPDATE NOTIFICATION PREFERENCES
 class UpdateNotificationPreferencesView(APIView):
@@ -1546,14 +1546,14 @@ class UpdateNotificationPreferencesView(APIView):
         push_enabled = request.data.get("push_notifications_enabled")
 
         if push_enabled is None:
-            return Response({"error": "Missing field"}, status=400)
+            return Response({"error": "Campo mancante"}, status=400)
 
         profile = get_object_or_404(Profile, user=request.user)
         profile.push_notifications_enabled = push_enabled
         profile.save()
 
         return Response({
-            "message": "Preferences updated",
+            "message": "Preferenze aggiornate",
             "push_notifications_enabled": profile.push_notifications_enabled
         })
 
