@@ -1251,7 +1251,8 @@ class ResetPasswordConfirmView(View):
         try:
             data = json.loads(request.body)
             logger.info(f"🔍 Dati parsati: {data}")
-            new_password = data.get('password')
+            # Supporta sia 'password' che 'new_password' per compatibilità
+            new_password = data.get('password') or data.get('new_password')
             logger.info(f"🔍 Password ricevuta: {'Sì' if new_password else 'No'}")
         except json.JSONDecodeError as e:
             logger.error(f"❌ Errore parsing JSON: {str(e)}")
