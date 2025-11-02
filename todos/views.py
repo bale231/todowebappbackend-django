@@ -662,7 +662,9 @@ class SingleListView(APIView):
             todo_data = {
                 "id": todo.id,
                 "title": todo.title,
-                "completed": todo.completed
+                "completed": todo.completed,
+                "quantity": todo.quantity,
+                "unit": todo.unit
             }
 
             # Aggiungi created_by se presente
@@ -843,6 +845,8 @@ class TodoCreateView(APIView):
     def post(self, request, list_id):
         user = request.user
         title = request.data.get("title")
+        quantity = request.data.get("quantity")
+        unit = request.data.get("unit")
 
         # Verifica se può modificare la lista
         if not can_user_edit_list(user, list_id):
@@ -852,7 +856,13 @@ class TodoCreateView(APIView):
         if not category:
             return Response({"error": "Categoria non trovata"}, status=404)
 
-        todo = Todo.objects.create(title=title, category=category, created_by=user)
+        todo = Todo.objects.create(
+            title=title,
+            category=category,
+            created_by=user,
+            quantity=quantity,
+            unit=unit
+        )
 
         # Prepara info created_by
         created_by_info = {
@@ -908,6 +918,8 @@ class TodoCreateView(APIView):
             "id": todo.id,
             "title": todo.title,
             "completed": todo.completed,
+            "quantity": todo.quantity,
+            "unit": todo.unit,
             "created_by": created_by_info
         })
 
