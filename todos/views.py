@@ -1055,6 +1055,14 @@ class TodoUpdateView(APIView):
         old_title = todo.title
         todo.title = new_title
         todo.modified_by = user
+
+        # ⭐ Aggiorna quantity e unit se presenti
+        if 'quantity' in request.data:
+            todo.quantity = request.data.get('quantity')
+
+        if 'unit' in request.data:
+            todo.unit = request.data.get('unit')
+
         todo.save()
 
         # Invia notifiche a tutti gli utenti con cui è condivisa la lista
@@ -1101,7 +1109,12 @@ class TodoUpdateView(APIView):
                     body=notification.message
                 )
 
-        return Response({"success": True, "title": todo.title})
+        return Response({
+            "success": True,
+            "title": todo.title,
+            "quantity": todo.quantity,
+            "unit": todo.unit
+        })
 
 ## VIEW MOVE TODO TO ANOTHER LIST
 class MoveTodoView(APIView):
