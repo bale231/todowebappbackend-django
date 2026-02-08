@@ -26,6 +26,7 @@ class Category(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     sort_order = models.CharField(max_length=20, default="created")
     category = models.ForeignKey(ListCategory, on_delete=models.SET_NULL, null=True, blank=True, related_name="lists")
+    is_archived = models.BooleanField(default=False)
 
 class Todo(models.Model):
     title = models.CharField(max_length=255)
