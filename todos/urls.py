@@ -37,6 +37,8 @@ urlpatterns = [
     path("lists/<int:list_id>/", SingleListView.as_view(), name="single-list"),
     # path("lists/<int:pk>/", CategoryDetailView.as_view(), name="category-detail"),
     path("lists/<int:list_id>/rename/", RenameListView.as_view(), name="list-rename"),
+    path("lists/<int:list_id>/archive/", ArchiveListView.as_view(), name="list-archive"),
+    path("lists/<int:list_id>/unarchive/", UnarchiveListView.as_view(), name="list-unarchive"),
     path("lists/sort_order/", UpdateListsOrderingView.as_view(), name="update-lists-ordering"),
 
     # --- ✅ Operazioni su ToDo ---

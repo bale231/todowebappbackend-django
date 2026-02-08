@@ -467,6 +467,11 @@ class CategoryListView(APIView):
         # Liste di proprietà dell'utente
         categories = Category.objects.filter(user=user)
 
+        # Opzionale: parametro per escludere archiviate
+        include_archived = request.query_params.get('include_archived', 'true')
+        if include_archived.lower() == 'false':
+            categories = categories.filter(is_archived=False)
+
         # Liste condivise con l'utente
         shared_lists = SharedList.objects.filter(shared_with=user).select_related('list')
 
@@ -526,6 +531,7 @@ class CategoryListView(APIView):
                 "is_shared": False,
                 "can_edit": True,
                 "shared_by": None,
+                "is_archived": cat.is_archived,
                 "todos": todos_list
             })
 
@@ -588,6 +594,7 @@ class CategoryListView(APIView):
                     "username": shared.shared_by.username,
                     "full_name": shared.shared_by.profile.get_full_name() if hasattr(shared.shared_by, 'profile') else shared.shared_by.username
                 },
+                "is_archived": cat.is_archived,
                 "todos": todos_list
             })
 
@@ -709,6 +716,7 @@ class SingleListView(APIView):
             "can_edit": can_edit,
             "shared_by": shared_by_info,
             "shared_with": shared_with_list,
+            "is_archived": category.is_archived,
             "todos": todos_list
         })
 
@@ -755,6 +763,44 @@ class SingleListView(APIView):
             return Response({"message": "Lista eliminata"})
         except Category.DoesNotExist:
             return Response({"error": "Non trovata o permesso negato"}, status=404)
+
+## VIEW ARCHIVE LIST
+class ArchiveListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, list_id):
+        """Archivia una lista"""
+        try:
+            list_obj = Category.objects.get(id=list_id, user=request.user)
+        except Category.DoesNotExist:
+            return Response(
+                {'error': 'Non hai i permessi per archiviare questa lista'},
+                status=403
+            )
+
+        list_obj.is_archived = True
+        list_obj.save()
+        return Response({'message': 'Lista archiviata', 'is_archived': True})
+
+
+## VIEW UNARCHIVE LIST
+class UnarchiveListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, list_id):
+        """Ripristina una lista archiviata"""
+        try:
+            list_obj = Category.objects.get(id=list_id, user=request.user)
+        except Category.DoesNotExist:
+            return Response(
+                {'error': 'Non hai i permessi per ripristinare questa lista'},
+                status=403
+            )
+
+        list_obj.is_archived = False
+        list_obj.save()
+        return Response({'message': 'Lista ripristinata', 'is_archived': False})
+
 
 ## VIEW UPDATE CATEGORY ORDER
 class UpdateListsOrderingView(APIView):
