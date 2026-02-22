@@ -77,4 +77,9 @@ urlpatterns = [
     path("categories/<int:category_id>/share/", ShareCategoryView.as_view(), name="share-category"),
     path("categories/<int:category_id>/share/<int:user_id>/", UnshareCategoryView.as_view(), name="unshare-category"),
     path("categories/<int:category_id>/shares/", CategorySharesView.as_view(), name="category-shares"),
+
+    # --- ✅ Voice / Siri Shortcuts ---
+    path("voice/add-todo/", VoiceAddTodoView.as_view(), name="voice-add-todo"),
+    path("voice/lists/", VoiceListsView.as_view(), name="voice-lists"),
+    path("voice/setup/", VoiceSetupView.as_view(), name="voice-setup"),
 ]
