@@ -2124,3 +2124,167 @@ def create_notification(user, notif_type, title, message, from_user=None, list_n
         from_user=from_user,
         list_name=list_name
     )
+
+
+## ==========================================
+## VOICE / SIRI SHORTCUTS ENDPOINTS
+## ==========================================
+
+## VIEW VOICE ADD TODO
+class VoiceAddTodoView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        """Aggiunge un todo tramite Siri Shortcuts (ricerca lista per nome)"""
+        user = request.user
+        title = request.data.get("title")
+        quantity = request.data.get("quantity")
+        unit = request.data.get("unit")
+        list_name = request.data.get("list_name")
+        list_id = request.data.get("list_id")
+
+        # Validazione titolo
+        if not title:
+            return Response({
+                "success": False,
+                "error": "Il campo 'title' è obbligatorio"
+            }, status=400)
+
+        # Validazione lista
+        if not list_name and not list_id:
+            return Response({
+                "success": False,
+                "error": "Il campo 'list_name' è obbligatorio"
+            }, status=400)
+
+        # Cerca la lista: per ID (fallback) o per nome (case-insensitive)
+        category = None
+
+        if list_id:
+            # Cerca per ID tra liste proprie e condivise con permesso edit
+            category = Category.objects.filter(id=list_id, user=user).first()
+            if not category:
+                shared = SharedList.objects.filter(
+                    list_id=list_id, shared_with=user, can_edit=True
+                ).select_related('list').first()
+                if shared:
+                    category = shared.list
+
+        if not category and list_name:
+            # Cerca per nome (case-insensitive) tra liste proprie
+            category = Category.objects.filter(user=user, name__iexact=list_name).first()
+
+            # Se non trovata, cerca tra le liste condivise con permesso edit
+            if not category:
+                shared = SharedList.objects.filter(
+                    shared_with=user, can_edit=True, list__name__iexact=list_name
+                ).select_related('list').first()
+                if shared:
+                    category = shared.list
+
+        if not category:
+            # Restituisci le liste disponibili
+            own_lists = list(Category.objects.filter(user=user).values_list('name', flat=True))
+            shared_lists = list(
+                SharedList.objects.filter(shared_with=user, can_edit=True)
+                .select_related('list')
+                .values_list('list__name', flat=True)
+            )
+            available = own_lists + shared_lists
+
+            search_term = list_name or f"ID {list_id}"
+            return Response({
+                "success": False,
+                "error": f"Lista '{search_term}' non trovata",
+                "available_lists": available
+            }, status=400)
+
+        # Crea il todo
+        todo = Todo.objects.create(
+            title=title,
+            category=category,
+            created_by=user,
+            quantity=quantity,
+            unit=unit
+        )
+
+        # Costruisci messaggio di conferma
+        if quantity and unit:
+            message = f"Aggiunto: {quantity} {unit} di {title} alla lista {category.name}"
+        elif quantity:
+            message = f"Aggiunto: {quantity}x {title} alla lista {category.name}"
+        else:
+            message = f"Aggiunto: {title} alla lista {category.name}"
+
+        return Response({
+            "success": True,
+            "message": message,
+            "todo": {
+                "id": todo.id,
+                "title": todo.title,
+                "quantity": todo.quantity,
+                "unit": todo.unit
+            },
+            "list": {
+                "id": category.id,
+                "name": category.name
+            }
+        }, status=201)
+
+
+## VIEW VOICE LISTS
+class VoiceListsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        """Restituisce i nomi delle liste dell'utente (per Siri Shortcuts)"""
+        user = request.user
+
+        own_lists = list(Category.objects.filter(user=user).values_list('name', flat=True))
+        shared_lists = list(
+            SharedList.objects.filter(shared_with=user, can_edit=True)
+            .select_related('list')
+            .values_list('list__name', flat=True)
+        )
+
+        return Response({"lists": own_lists + shared_lists})
+
+
+## VIEW VOICE SETUP PAGE
+class VoiceSetupView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        """Pagina di setup per Siri Shortcuts - restituisce istruzioni e info"""
+        user = request.user
+
+        # Genera un token fresh per l'utente
+        refresh = RefreshToken.for_user(user)
+        access_token = str(refresh.access_token)
+
+        return Response({
+            "user": user.username,
+            "token": access_token,
+            "api_base_url": "https://bale231.pythonanywhere.com/api",
+            "endpoints": {
+                "add_todo": "POST /api/voice/add-todo/",
+                "lists": "GET /api/voice/lists/"
+            },
+            "siri_shortcut_steps": [
+                "1. Apri l'app 'Comandi' (Shortcuts) su iPhone",
+                "2. Crea un nuovo comando",
+                "3. Aggiungi 'Chiedi input' → 'Cosa vuoi aggiungere?' (Testo) → salva in variabile 'titolo'",
+                "4. Aggiungi 'Chiedi input' → 'Quantità? (lascia vuoto per saltare)' (Numero) → salva in variabile 'quantita'",
+                "5. Aggiungi 'Se' quantita ha un valore:",
+                "   - 'Chiedi input' → 'Unità di misura? (es: litri, kg, pezzi)' (Testo) → salva in variabile 'unita'",
+                "6. Aggiungi 'Chiedi input' → 'A quale lista?' (Testo) → salva in variabile 'lista'",
+                "7. Aggiungi 'Ottieni contenuto dell'URL':",
+                f"   - URL: https://bale231.pythonanywhere.com/api/voice/add-todo/",
+                "   - Metodo: POST",
+                f"   - Headers: Authorization: Bearer {access_token}",
+                "   - Body JSON: { \"title\": titolo, \"quantity\": quantita, \"unit\": unita, \"list_name\": lista }",
+                "8. Aggiungi 'Ottieni valore del dizionario' → chiave 'message'",
+                "9. Aggiungi 'Leggi testo ad alta voce' → legge il messaggio di conferma",
+            ],
+            "note": "Il token JWT scade dopo 30 minuti. Per un utilizzo continuativo, salva refresh token e implementa il refresh automatico nello Shortcut, oppure usa il login con 'remember_me' per token di lunga durata."
+        })
