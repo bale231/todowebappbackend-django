@@ -11,11 +11,12 @@ from django.utils.decorators import method_decorator
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth import authenticate
 from django.contrib.auth.hashers import make_password
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, render
 from django.template.loader import render_to_string
 from django.db.models.functions import Lower
 from django.db.models import Q
-from .models import Todo, Category, Profile, Notification, FriendRequest, Friendship, ListCategory, SharedList, SharedCategory, PasswordResetToken
+from .models import Todo, Category, Profile, Notification, FriendRequest, Friendship, ListCategory, SharedList, SharedCategory, PasswordResetToken, VoiceAPIKey
+from .authentication import VoiceKeyAuthentication
 from .serializers import EmailOrUsernameTokenObtainPairSerializer, UserProfileSerializer, FriendRequestSerializer, FriendshipSerializer
 
 
@@ -26,6 +27,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.parsers import JSONParser, FormParser, MultiPartParser
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework.permissions import IsAuthenticated
 
 ## Date/Time package
@@ -2132,6 +2134,7 @@ def create_notification(user, notif_type, title, message, from_user=None, list_n
 
 ## VIEW VOICE ADD TODO
 class VoiceAddTodoView(APIView):
+    authentication_classes = [VoiceKeyAuthentication, JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
@@ -2234,6 +2237,7 @@ class VoiceAddTodoView(APIView):
 
 ## VIEW VOICE LISTS
 class VoiceListsView(APIView):
+    authentication_classes = [VoiceKeyAuthentication, JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
@@ -2250,41 +2254,95 @@ class VoiceListsView(APIView):
         return Response({"lists": own_lists + shared_lists})
 
 
-## VIEW VOICE SETUP PAGE
+## VIEW VOICE SETUP PAGE (HTML template)
 class VoiceSetupView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        """Pagina di setup per Siri Shortcuts - restituisce istruzioni e info"""
+        """Pagina HTML di setup per Siri Shortcuts con gestione API key"""
         user = request.user
+        keys = VoiceAPIKey.objects.filter(user=user, is_active=True)
 
-        # Genera un token fresh per l'utente
-        refresh = RefreshToken.for_user(user)
-        access_token = str(refresh.access_token)
+        keys_data = []
+        for k in keys:
+            preview = k.key[:4] + '...' + k.key[-3:] if len(k.key) > 7 else '***'
+            keys_data.append({
+                'id': k.id,
+                'name': k.name,
+                'created_at': k.created_at.strftime('%d/%m/%Y %H:%M'),
+                'last_used_at': k.last_used_at.strftime('%d/%m/%Y %H:%M') if k.last_used_at else 'Mai',
+                'key_preview': preview,
+            })
+
+        return render(request, 'voice_setup.html', {
+            'user': user,
+            'keys': keys_data,
+            'keys_count': keys.count(),
+            'max_keys': 3,
+        })
+
+
+## VIEW VOICE API KEY MANAGEMENT
+class VoiceAPIKeyListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        """Lista API key dell'utente"""
+        keys = VoiceAPIKey.objects.filter(user=request.user, is_active=True)
+        data = []
+        for k in keys:
+            preview = k.key[:4] + '...' + k.key[-3:] if len(k.key) > 7 else '***'
+            data.append({
+                'id': k.id,
+                'name': k.name,
+                'created_at': k.created_at.isoformat(),
+                'last_used_at': k.last_used_at.isoformat() if k.last_used_at else None,
+                'is_active': k.is_active,
+                'key_preview': preview,
+            })
+        return Response({'keys': data})
+
+    def post(self, request):
+        """Crea nuova API key"""
+        user = request.user
+        name = request.data.get('name', '').strip()
+
+        if not name:
+            return Response({
+                'success': False,
+                'error': "Il campo 'name' è obbligatorio"
+            }, status=400)
+
+        # Max 3 key attive
+        active_count = VoiceAPIKey.objects.filter(user=user, is_active=True).count()
+        if active_count >= 3:
+            return Response({
+                'success': False,
+                'error': 'Hai raggiunto il limite massimo di 3 API key attive. Revoca una key esistente per crearne una nuova.'
+            }, status=400)
+
+        api_key = VoiceAPIKey.objects.create(user=user, name=name)
 
         return Response({
-            "user": user.username,
-            "token": access_token,
-            "api_base_url": "https://bale231.pythonanywhere.com/api",
-            "endpoints": {
-                "add_todo": "POST /api/voice/add-todo/",
-                "lists": "GET /api/voice/lists/"
-            },
-            "siri_shortcut_steps": [
-                "1. Apri l'app 'Comandi' (Shortcuts) su iPhone",
-                "2. Crea un nuovo comando",
-                "3. Aggiungi 'Chiedi input' → 'Cosa vuoi aggiungere?' (Testo) → salva in variabile 'titolo'",
-                "4. Aggiungi 'Chiedi input' → 'Quantità? (lascia vuoto per saltare)' (Numero) → salva in variabile 'quantita'",
-                "5. Aggiungi 'Se' quantita ha un valore:",
-                "   - 'Chiedi input' → 'Unità di misura? (es: litri, kg, pezzi)' (Testo) → salva in variabile 'unita'",
-                "6. Aggiungi 'Chiedi input' → 'A quale lista?' (Testo) → salva in variabile 'lista'",
-                "7. Aggiungi 'Ottieni contenuto dell'URL':",
-                f"   - URL: https://bale231.pythonanywhere.com/api/voice/add-todo/",
-                "   - Metodo: POST",
-                f"   - Headers: Authorization: Bearer {access_token}",
-                "   - Body JSON: { \"title\": titolo, \"quantity\": quantita, \"unit\": unita, \"list_name\": lista }",
-                "8. Aggiungi 'Ottieni valore del dizionario' → chiave 'message'",
-                "9. Aggiungi 'Leggi testo ad alta voce' → legge il messaggio di conferma",
-            ],
-            "note": "Il token JWT scade dopo 30 minuti. Per un utilizzo continuativo, salva refresh token e implementa il refresh automatico nello Shortcut, oppure usa il login con 'remember_me' per token di lunga durata."
-        })
+            'id': api_key.id,
+            'key': api_key.key,
+            'name': api_key.name,
+            'created_at': api_key.created_at.isoformat(),
+            'message': 'Salva questa chiave! Non potrai vederla di nuovo.'
+        }, status=201)
+
+
+## VIEW VOICE API KEY DELETE
+class VoiceAPIKeyDeleteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, key_id):
+        """Revoca una API key"""
+        try:
+            api_key = VoiceAPIKey.objects.get(id=key_id, user=request.user)
+        except VoiceAPIKey.DoesNotExist:
+            return Response({'error': 'API key non trovata'}, status=404)
+
+        api_key.is_active = False
+        api_key.save()
+        return Response({'message': 'API key revocata con successo'})

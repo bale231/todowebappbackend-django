@@ -82,4 +82,6 @@ urlpatterns = [
     path("voice/add-todo/", VoiceAddTodoView.as_view(), name="voice-add-todo"),
     path("voice/lists/", VoiceListsView.as_view(), name="voice-lists"),
     path("voice/setup/", VoiceSetupView.as_view(), name="voice-setup"),
+    path("voice/keys/", VoiceAPIKeyListView.as_view(), name="voice-keys"),
+    path("voice/keys/<int:key_id>/", VoiceAPIKeyDeleteView.as_view(), name="voice-key-delete"),
 ]
