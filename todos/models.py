@@ -5,6 +5,7 @@ from django.db import models
 from django.utils import timezone
 from datetime import timedelta
 import uuid
+import secrets
 
 class ListCategory(models.Model):
     """Categoria per raggruppare le liste"""
@@ -207,6 +208,27 @@ class PasswordResetToken(models.Model):
 
     def __str__(self):
         return f"Reset token per {self.user.username} - {'Usato' if self.used else 'Valido' if self.is_valid() else 'Scaduto'}"
+
+
+class VoiceAPIKey(models.Model):
+    """API Key permanente per assistenti vocali (Siri, Google Assistant, ecc.)"""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='voice_api_keys')
+    key = models.CharField(max_length=64, unique=True)
+    name = models.CharField(max_length=50)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def save(self, *args, **kwargs):
+        if not self.key:
+            self.key = secrets.token_urlsafe(32)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"VoiceKey '{self.name}' di {self.user.username}"
 
 
 # Segnale per creare automaticamente il profilo quando viene creato un nuovo utente

@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Setup Siri Shortcuts - ToDoApp</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f7;
+            color: #1d1d1f;
+            padding: 20px;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        h1 { font-size: 28px; margin-bottom: 8px; }
+        h2 { font-size: 20px; margin: 24px 0 12px; }
+        .subtitle { color: #86868b; margin-bottom: 24px; }
+        .card {
+            background: #fff;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+        .key-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .key-row:last-child { border-bottom: none; }
+        .key-info { flex: 1; }
+        .key-name { font-weight: 600; font-size: 16px; }
+        .key-meta { color: #86868b; font-size: 13px; margin-top: 4px; }
+        .key-preview { font-family: monospace; color: #6e6e73; font-size: 13px; }
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: none;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            text-align: center;
+        }
+        .btn-primary { background: #007aff; color: #fff; }
+        .btn-primary:hover { background: #0066d6; }
+        .btn-danger { background: #ff3b30; color: #fff; font-size: 13px; padding: 6px 14px; }
+        .btn-danger:hover { background: #d63028; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #d2d2d7;
+            border-radius: 8px;
+            font-size: 15px;
+            margin-bottom: 12px;
+        }
+        input[type="text"]:focus { outline: none; border-color: #007aff; }
+        .new-key-box {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            border-radius: 10px;
+            padding: 16px;
+            margin: 16px 0;
+            display: none;
+        }
+        .new-key-box.show { display: block; }
+        .new-key-box .warning { font-weight: 700; color: #856404; margin-bottom: 8px; }
+        .new-key-value {
+            font-family: monospace;
+            font-size: 14px;
+            word-break: break-all;
+            background: #fff;
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid #ddd;
+            margin: 8px 0;
+        }
+        .btn-copy { background: #34c759; color: #fff; width: 100%; margin-top: 8px; }
+        .btn-copy:hover { background: #2db84d; }
+        .step {
+            padding: 12px 0;
+            border-bottom: 1px solid #f0f0f0;
+            display: flex;
+            gap: 12px;
+        }
+        .step:last-child { border-bottom: none; }
+        .step-num {
+            background: #007aff;
+            color: #fff;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+        .step-text { font-size: 15px; line-height: 1.5; }
+        .empty-state { text-align: center; padding: 20px; color: #86868b; }
+        .success-msg {
+            background: #d4edda;
+            color: #155724;
+            padding: 10px 16px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            display: none;
+            font-size: 14px;
+        }
+        .error-msg {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 10px 16px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            display: none;
+            font-size: 14px;
+        }
+        code {
+            background: #f0f0f0;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Siri Shortcuts</h1>
+    <p class="subtitle">Ciao {{ user.username }}, configura i comandi vocali per aggiungere todo.</p>
+
+    <!-- API Keys Section -->
+    <h2>Le tue API Key</h2>
+    <div class="card">
+        <div id="keys-list">
+            {% if keys %}
+                {% for key in keys %}
+                <div class="key-row" id="key-row-{{ key.id }}">
+                    <div class="key-info">
+                        <div class="key-name">{{ key.name }}</div>
+                        <div class="key-meta">
+                            <span class="key-preview">{{ key.key_preview }}</span>
+                            &middot; Creata: {{ key.created_at }}
+                            &middot; Ultimo uso: {{ key.last_used_at }}
+                        </div>
+                    </div>
+                    <button class="btn btn-danger" onclick="revokeKey({{ key.id }})">Revoca</button>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="empty-state">Nessuna API key. Creane una per iniziare.</div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Create Key Section -->
+    <h2>Genera nuova API Key</h2>
+    <div class="card">
+        <div id="success-msg" class="success-msg"></div>
+        <div id="error-msg" class="error-msg"></div>
+        <input type="text" id="key-name" placeholder="Nome dispositivo (es: iPhone di Luigi)" maxlength="50">
+        <button class="btn btn-primary" id="create-btn" onclick="createKey()" {% if keys_count >= max_keys %}disabled{% endif %}>
+            {% if keys_count >= max_keys %}
+                Limite raggiunto ({{ keys_count }}/{{ max_keys }})
+            {% else %}
+                Genera API Key ({{ keys_count }}/{{ max_keys }})
+            {% endif %}
+        </button>
+
+        <div class="new-key-box" id="new-key-box">
+            <div class="warning">Salva questa chiave ora! Non potrai vederla di nuovo.</div>
+            <div class="new-key-value" id="new-key-value"></div>
+            <button class="btn btn-copy" onclick="copyKey()">Copia chiave</button>
+        </div>
+    </div>
+
+    <!-- Instructions Section -->
+    <h2>Come configurare lo Shortcut Siri</h2>
+    <div class="card">
+        <div class="step">
+            <div class="step-num">1</div>
+            <div class="step-text">Genera una API Key qui sopra e copiala</div>
+        </div>
+        <div class="step">
+            <div class="step-num">2</div>
+            <div class="step-text">Apri l'app <strong>Comandi</strong> (Shortcuts) su iPhone e crea un nuovo comando</div>
+        </div>
+        <div class="step">
+            <div class="step-num">3</div>
+            <div class="step-text">Aggiungi <strong>"Chiedi input"</strong> &rarr; "Cosa vuoi aggiungere?" (Testo) &rarr; salva in variabile <code>titolo</code></div>
+        </div>
+        <div class="step">
+            <div class="step-num">4</div>
+            <div class="step-text">Aggiungi <strong>"Chiedi input"</strong> &rarr; "Quantit&agrave;?" (Numero) &rarr; salva in variabile <code>quantita</code></div>
+        </div>
+        <div class="step">
+            <div class="step-num">5</div>
+            <div class="step-text">Aggiungi un blocco <strong>"Se"</strong> quantita ha un valore: <strong>"Chiedi input"</strong> &rarr; "Unit&agrave; di misura?" (Testo) &rarr; salva in <code>unita</code></div>
+        </div>
+        <div class="step">
+            <div class="step-num">6</div>
+            <div class="step-text">Aggiungi <strong>"Chiedi input"</strong> &rarr; "A quale lista?" (Testo) &rarr; salva in variabile <code>lista</code></div>
+        </div>
+        <div class="step">
+            <div class="step-num">7</div>
+            <div class="step-text">
+                Aggiungi <strong>"Ottieni contenuto dell'URL"</strong>:<br>
+                URL: <code>https://bale231.pythonanywhere.com/api/voice/add-todo/</code><br>
+                Metodo: <strong>POST</strong><br>
+                Header: <code>Authorization: VoiceKey LA_TUA_KEY</code><br>
+                Body JSON: <code>{ "title": titolo, "quantity": quantita, "unit": unita, "list_name": lista }</code>
+            </div>
+        </div>
+        <div class="step">
+            <div class="step-num">8</div>
+            <div class="step-text">Aggiungi <strong>"Ottieni valore del dizionario"</strong> &rarr; chiave <code>message</code></div>
+        </div>
+        <div class="step">
+            <div class="step-num">9</div>
+            <div class="step-text">Aggiungi <strong>"Leggi testo ad alta voce"</strong> &rarr; legge il messaggio di conferma</div>
+        </div>
+    </div>
+
+    <script>
+        const authToken = '{{ request.META.HTTP_AUTHORIZATION }}';
+
+        function getHeaders() {
+            return {
+                'Content-Type': 'application/json',
+                'Authorization': authToken
+            };
+        }
+
+        async function createKey() {
+            const nameInput = document.getElementById('key-name');
+            const name = nameInput.value.trim();
+            const successMsg = document.getElementById('success-msg');
+            const errorMsg = document.getElementById('error-msg');
+            const newKeyBox = document.getElementById('new-key-box');
+
+            successMsg.style.display = 'none';
+            errorMsg.style.display = 'none';
+            newKeyBox.classList.remove('show');
+
+            if (!name) {
+                errorMsg.textContent = 'Inserisci un nome per la key';
+                errorMsg.style.display = 'block';
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/voice/keys/', {
+                    method: 'POST',
+                    headers: getHeaders(),
+                    body: JSON.stringify({ name: name })
+                });
+                const data = await res.json();
+
+                if (res.ok) {
+                    document.getElementById('new-key-value').textContent = data.key;
+                    newKeyBox.classList.add('show');
+                    successMsg.textContent = 'API Key creata! Copiala prima di chiudere questa pagina.';
+                    successMsg.style.display = 'block';
+                    nameInput.value = '';
+                    // Reload per aggiornare la lista
+                    setTimeout(() => location.reload(), 5000);
+                } else {
+                    errorMsg.textContent = data.error || 'Errore nella creazione';
+                    errorMsg.style.display = 'block';
+                }
+            } catch (e) {
+                errorMsg.textContent = 'Errore di connessione';
+                errorMsg.style.display = 'block';
+            }
+        }
+
+        async function revokeKey(keyId) {
+            if (!confirm('Sei sicuro di voler revocare questa API key? Lo Shortcut Siri collegato smetterà di funzionare.')) return;
+
+            try {
+                const res = await fetch('/api/voice/keys/' + keyId + '/', {
+                    method: 'DELETE',
+                    headers: getHeaders()
+                });
+
+                if (res.ok) {
+                    document.getElementById('key-row-' + keyId).remove();
+                    // Se non ci sono più key, mostra empty state
+                    const keysList = document.getElementById('keys-list');
+                    if (!keysList.querySelector('.key-row')) {
+                        keysList.innerHTML = '<div class="empty-state">Nessuna API key. Creane una per iniziare.</div>';
+                    }
+                }
+            } catch (e) {
+                alert('Errore di connessione');
+            }
+        }
+
+        function copyKey() {
+            const keyText = document.getElementById('new-key-value').textContent;
+            navigator.clipboard.writeText(keyText).then(() => {
+                const btn = document.querySelector('.btn-copy');
+                btn.textContent = 'Copiata!';
+                setTimeout(() => btn.textContent = 'Copia chiave', 2000);
+            });
+        }
+    </script>
+</body>
+</html>
