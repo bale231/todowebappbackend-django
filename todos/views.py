@@ -36,6 +36,7 @@ from datetime import datetime, timedelta
 ## Import module
 import logging
 import json
+import os
 from todoproject.firebase_config import send_push_notification
 from todoproject.email_service import send_verification_email, send_password_reset_email, EMAIL_ENABLED
 
@@ -2346,3 +2347,99 @@ class VoiceAPIKeyDeleteView(APIView):
         api_key.is_active = False
         api_key.save()
         return Response({'message': 'API key revocata con successo'})
+
+
+## ==========================================
+## AI CHATBOT ENDPOINT
+## ==========================================
+
+AI_CHAT_SYSTEM_PROMPT = """Sei l'assistente virtuale di ToDoApp, un'app web per gestire liste e to-do. Rispondi SOLO a domande relative all'app. Se l'utente chiede cose non correlate all'app, rispondi gentilmente che puoi aiutarlo solo con le funzionalità di ToDoApp.
+
+Rispondi in italiano, in modo conciso e amichevole. Usa emoji quando appropriato.
+
+Ecco tutte le funzionalità dell'app:
+
+REGISTRAZIONE: Dalla pagina login clicca "Registrati". Inserisci username, email, password (min 8 caratteri, 1 maiuscola, 1 numero). Dopo la registrazione, verifica l'email cliccando il link ricevuto.
+
+LOGIN: Puoi accedere con username o email. Opzione "Rimani loggato" per persistenza sessione. Devi aver verificato l'email prima.
+
+PASSWORD: Se dimenticata, clicca "Hai dimenticato la password?" nella pagina login. Riceverai un'email per reimpostarla. Puoi anche cambiarla dal Profilo.
+
+PROFILO: Modifica foto profilo (tocca l'immagine), username, email. Cambia password. Gestisci notifiche push. Disattiva account (irreversibile).
+
+LISTE: Crea liste con nome, colore (blu, verde, giallo, rosso, viola) e categoria opzionale. Modifica, elimina, archivia liste. Su mobile usa swipe per azioni rapide. Ordina per creazione, alfabetico o completezza.
+
+TO-DO: Aggiungi to-do con quantità e unità di misura (es. "Latte - 2 litri"). Completa con checkbox. Modifica, elimina, sposta tra liste. Drag & drop per riordinare. Eliminazione multipla con selezione.
+
+CATEGORIE: Crea categorie per organizzare le liste (es. Casa, Lavoro, Spesa). Filtra liste per categoria dalla Home. Ordina categorie alfabeticamente.
+
+CONDIVISIONE: Aggiungi amici cercando per username. Gestisci richieste di amicizia. Condividi liste con permessi (solo lettura o modifica). Nelle liste condivise vedi chi ha aggiunto/modificato ogni to-do.
+
+NOTIFICHE: In-app (sempre attive, badge campanella) per richieste amicizia, accettazioni, liste condivise. Push (opzionali) dal Profilo.
+
+OFFLINE: L'app funziona offline! Visualizza, crea, modifica, completa to-do. Sincronizzazione automatica al ritorno online. Login, registrazione, condivisione, gestione account richiedono internet.
+
+INSTALLAZIONE PWA: Android (Chrome): menu > "Aggiungi a schermata Home". iPhone (Safari): condivisione > "Aggiungi a Home". Desktop: icona installazione nella barra indirizzi.
+
+TEMA: Tema chiaro/scuro dall'icona sole/luna nella navbar. Preferenza salvata automaticamente.
+
+RICERCA: Cerca liste e to-do dalla Home o dentro una lista. Risultati in tempo reale.
+
+L'app è completamente gratuita, funziona su tutti i browser moderni, e i dati sono protetti e crittografati.
+
+Sito web: todowebapp-websites.vercel.app
+Per problemi non risolvibili, suggerisci di usare la sezione "Contattaci" nel widget di supporto."""
+
+
+class AIChatView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        """Chatbot AI per supporto utenti - usa Claude Haiku"""
+        message = request.data.get("message", "").strip()
+        conversation_history = request.data.get("conversation_history", [])
+
+        if not message:
+            return Response({"error": "Il campo 'message' è obbligatorio"}, status=400)
+
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        if not api_key:
+            return Response({
+                "error": "Servizio AI non configurato"
+            }, status=503)
+
+        try:
+            import anthropic
+            client = anthropic.Anthropic(api_key=api_key)
+
+            # Costruisci i messaggi per l'API
+            messages = []
+            for msg in conversation_history:
+                role = msg.get("role")
+                content = msg.get("content", "")
+                if role in ("user", "assistant") and content:
+                    messages.append({"role": role, "content": content})
+
+            # Aggiungi il messaggio corrente
+            messages.append({"role": "user", "content": message})
+
+            response = client.messages.create(
+                model="claude-haiku-4-20250414",
+                max_tokens=1024,
+                system=AI_CHAT_SYSTEM_PROMPT,
+                messages=messages
+            )
+
+            reply = response.content[0].text
+
+            return Response({"reply": reply})
+
+        except ImportError:
+            return Response({
+                "error": "Libreria anthropic non installata"
+            }, status=503)
+        except Exception as e:
+            logger.error(f"Errore AI Chat: {e}")
+            return Response({
+                "error": "Errore nel servizio AI, riprova più tardi"
+            }, status=500)
